@@ -119,9 +119,22 @@ try {
     deny("не вдалося розібрати вхідний JSON хука", "хук не може перевірити ціль запису");
   }
 
-  const toolName = typeof payload?.tool_name === "string" ? payload.tool_name : "";
-  const input =
-    payload?.tool_input && typeof payload.tool_input === "object" ? payload.tool_input : {};
+  // Розібраний, але неочікуваної форми payload — це теж «не можу розсудити запис».
+  // Без цієї перевірки рядок чи null замість об'єкта тихо дав би exit 0, тобто дозвіл.
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    deny("вхідний JSON хука не є об'єктом", "хук не може перевірити ціль запису");
+  }
+  if (
+    payload.tool_input !== undefined &&
+    (payload.tool_input === null ||
+      typeof payload.tool_input !== "object" ||
+      Array.isArray(payload.tool_input))
+  ) {
+    deny("поле tool_input не є об'єктом", "хук не може перевірити ціль запису");
+  }
+
+  const toolName = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  const input = payload.tool_input ?? {};
   const cwd = typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : process.cwd();
 
   // Читання дозволене — забороняється лише запис.
