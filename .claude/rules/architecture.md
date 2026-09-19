@@ -38,7 +38,8 @@ paths:
 3. один рядок імпорту і один елемент масиву в `app/src/integrations/index.ts`.
 
 Більше нічого. Не заводь підтеки, спільні «хелпери», базові класи чи фабрики:
-якщо здається, що потрібен четвертий файл — зупинись і опиши, навіщо.
+якщо здається, що потрібен четвертий файл — зупинись, опиши, навіщо, і **чекай
+відповіді**. Четвертий файл без відповіді не створюй.
 Експортуй іменованим експортом, як `slack-notify.ts`
 (`export const <camelName>: Integration = { … }`), а не `export default`.
 
@@ -48,7 +49,7 @@ paths:
 |---|---|
 | `core/types.ts` | `Lead`, `Result<T>`, `Integration` |
 | `core/http.ts` | `postJson(url, body, options?)` → `Promise<Result<string>>`, `PostOptions` |
-| `core/config.ts` | `readEnv(name)` → `Result<string>` |
+| `core/config.ts` | `readEnv(name, env?)` → `Result<string>` (другий параметр — для тестів, за замовчуванням `process.env`) |
 | `core/parse.ts` | `parseJson(text, guard, label?)` → `Result<T>`, `Guard<T>`, `isRecord`, `isString`, `isNumber` |
 | `core/log.ts` | `log.info`, `log.warn`, `log.error`, `redact(text)` |
 

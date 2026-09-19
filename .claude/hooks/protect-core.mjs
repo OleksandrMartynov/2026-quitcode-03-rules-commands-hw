@@ -23,14 +23,31 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // Має збігатися зі списком у .claude/rules/do-not-touch.md.
-const PROTECTED_DIRS = ["app/src/core/", "app/scripts/", "materials/", ".github/"];
-const PROTECTED_FILES = [".coderabbit.yaml"];
+//
+// `.claude/` тут навмисно: правило, яке агент може переписати перед тим, як його
+// порушити, — не правило. Хук, що не боронить сам себе, знімається одним Edit,
+// після чого захищеним не лишається нічого. Самоблокування — це задум, а не
+// побічний ефект: людина редагує ці файли поза сесією агента.
+const PROTECTED_DIRS = [
+  "app/src/core/",
+  "app/scripts/",
+  "materials/",
+  ".github/",
+  ".claude/",
+];
+// package.json і tsconfig.json — це не код, а те, ЧИМ запускається перевірка.
+// Підмінивши скрипт `check:rules` або послабивши `strict`, можна отримати
+// «зелені» числа, не полагодивши нічого.
+const PROTECTED_FILES = [".coderabbit.yaml", "app/package.json", "app/tsconfig.json"];
 
 const PATH_FIELDS = ["file_path", "notebook_path", "path", "filePath"];
 
 // Читання захищених файлів дозволене — забороняється лише запис. Ці інструменти
 // пропускаємо навіть якщо в payload є шлях у захищеній зоні. Перелік — саме
-// allow-list, а не deny-list: невідомий інструмент зі шляхом усе одно перевіряється.
+// allow-list, а не deny-list: невідомий інструмент зі шляхом усе одно перевіряється
+// — але лише якщо matcher у .claude/settings.json узагалі покличе хук. Зараз це
+// Write|Edit|NotebookEdit|MultiEdit і Bash; інструмент поза цим переліком до хука
+// не доходить, і сам скрипт про це знати не може.
 const READ_ONLY_TOOLS = new Set([
   "Read",
   "Grep",
@@ -50,12 +67,22 @@ const BASH_BLOCKLIST = [
   },
 ];
 
+/**
+ * Прибирає лапки перед пошуком у команді: у шелі `--write""-lock` і
+ * `--write-'lock'` розгортаються в `--write-lock`, тож пошук по сирому рядку
+ * обходиться однією парою лапок. Це не робить перевірку стійкою до довільного
+ * шелу (змінні, `eval`, base64 лишаються поза нею) — межу описано в
+ * docs/verification.md, — але закриває найдешевший обхід.
+ */
+const unquote = (cmd) => cmd.replace(/["']/g, "");
+
 function deny(what, why) {
   process.stderr.write(
     `protect-core: заблоковано — ${what}\n` +
       `Причина: ${why}\n` +
       `Захищені зони: app/src/core/**, app/scripts/**, materials/**, .github/**, ` +
-      `.coderabbit.yaml. Їх не редагують — ні інструментом запису, ні через shell.\n` +
+      `.claude/**, .coderabbit.yaml, app/package.json, app/tsconfig.json. ` +
+      `Їх не редагують — ні інструментом запису, ні через shell.\n` +
       `Якщо задача не виконується без цієї зміни — зупинись і опиши людині: який файл, ` +
       `яку саме зміну і чому вона потрібна. Обхідний шлях не шукай.\n` +
       `Див. .claude/rules/do-not-touch.md\n`,
@@ -91,8 +118,12 @@ function classify(rawPath, cwd) {
   // Нижній регістр: файлові системи macOS і Windows не чутливі до регістру,
   // тож APP/SRC/CORE/log.ts інакше пройшов би повз префікс.
   const posix = rel.split(sep).join("/").toLowerCase();
-  // Слеш у кінці префікса тримає межу сегмента: app/src/core-helpers/ не збігається.
-  const dir = PROTECTED_DIRS.find((d) => posix.startsWith(d.toLowerCase()));
+  // Збіг по межі сегмента: "app/src/core/" не чіпляє "app/src/core-helpers/",
+  // але сама тека "app/src/core" (без слеша) теж має бути захищена.
+  const dir = PROTECTED_DIRS.find((d) => {
+    const low = d.toLowerCase();
+    return posix.startsWith(low) || posix === low.slice(0, -1);
+  });
   if (dir) return { rel, zone: dir };
   const file = PROTECTED_FILES.find((f) => posix === f.toLowerCase());
   if (file) return { rel, zone: file };
@@ -142,8 +173,9 @@ try {
 
   if (toolName === "Bash") {
     const cmd = typeof input.command === "string" ? input.command : "";
+    const probe = unquote(cmd);
     for (const { re, why } of BASH_BLOCKLIST) {
-      if (re.test(cmd)) deny(`команда \`${cmd.slice(0, 200)}\``, why);
+      if (re.test(cmd) || re.test(probe)) deny(`команда \`${cmd.slice(0, 200)}\``, why);
     }
     process.exit(0);
   }

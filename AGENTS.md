@@ -27,9 +27,9 @@ app/src/
   sync/          запуск синхронізації і стан між запусками
 ```
 
-`core/` спільний для всіх воркерів агенції й живе під окремим рев'ю платформної
-команди. Разом із ним не редагуються `app/scripts/`, `materials/`,
-`.coderabbit.yaml` і `.github/`.
+`core/` під окремим рев'ю платформної команди. Разом із ним не редагуються
+`app/scripts/`, `materials/`, `.coderabbit.yaml`, `.github/`, `.claude/` (правила
+й хук) і `app/package.json` / `app/tsconfig.json` (чим запускається перевірка).
 
 ## Головні домовленості
 
@@ -49,6 +49,9 @@ app/src/
 6. Пошкоджені зовнішні дані стають помилкою, а не мовчазним значенням за
    замовчуванням → [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
 7. Email і телефон ліда в сповіщення не потрапляють →
+   [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
+8. Нових залежностей не додаємо — нуль runtime-залежностей, і жодного пакета
+   в `dependencies` чи `devDependencies` →
    [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
 
 ## Джерела

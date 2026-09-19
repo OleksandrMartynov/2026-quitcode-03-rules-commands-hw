@@ -54,8 +54,15 @@ paths:
 
 7. **Без нових залежностей.**
    У застосунку нуль runtime-залежностей — так і лишається.
-   Не запускай `npm install <пакет>` і не додавай ключ `dependencies`.
+   Не запускай `npm install <пакет>` і не додавай пакет у жодну з мап:
+   `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`.
+   Наявні dev-залежності — рівно три: `vitest`, `typescript`, `@types/node`.
+   Код сторонньої бібліотеки не копіюй у модуль — це та сама залежність,
+   лише без запису в `package.json`.
    Потрібна бібліотека — спершу опиши в PR, навіщо, і чекай відповіді.
+
+   > `check:rules` бачить лише `dependencies` (`app/scripts/check-rules.mjs`),
+   > тож `devDependencies` перевіряй очима: `git diff -- app/package.json`.
    Виняток стосується **лише** тестів: `import { … } from "vitest"` у файлах
    `*.test.ts` — це наявна dev-залежність і єдиний спосіб писати тести.
    У production-файлах (`*.ts` без `.test.`) імпорти лише відносні або `node:*`.

@@ -36,8 +36,17 @@ awk '/^---$/{n++; next} n==1' materials/ab-task.md | shasum -a 256
 | наші команди у `slash_commands` | **`[]`** | **`["analyze-error","generate-integration","refactor"]`** |
 
 Порожній список у B — механічне підтвердження, що команди справді були недоступні,
-а не просто «ми їх перейменували». Обидва плечі завершились штатно
-(`is_error: false`, `stop_reason: "end_turn"` на обох ходах).
+а не просто «ми їх перейменували». Витяги з транскриптів обох плечей лежать у
+[`docs/ab/transcripts/`](ab/transcripts/) — поле `our_slash_commands` у події
+`init`, усі виклики інструментів і фінальний `result`:
+
+```bash
+grep -c '"name":"Edit"' docs/ab/transcripts/d-arm-b.jsonl   # 4 — плече B писало
+grep -c '"name":"Edit"' docs/ab/transcripts/d-arm-a.jsonl   # 0 — плече A ні
+```
+
+Обидва плечі завершились штатно (`is_error: false`, `stop_reason: "end_turn"`
+на обох ходах).
 
 ---
 
