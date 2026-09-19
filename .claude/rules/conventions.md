@@ -63,6 +63,7 @@ paths:
 
    > `check:rules` бачить лише `dependencies` (`app/scripts/check-rules.mjs`),
    > тож `devDependencies` перевіряй очима: `git diff -- app/package.json`.
+
    Виняток стосується **лише** тестів: `import { … } from "vitest"` у файлах
    `*.test.ts` — це наявна dev-залежність і єдиний спосіб писати тести.
    У production-файлах (`*.ts` без `.test.`) імпорти лише відносні або `node:*`.

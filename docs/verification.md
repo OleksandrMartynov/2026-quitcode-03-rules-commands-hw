@@ -20,8 +20,12 @@ env -i HOME="$HOME" PATH="$PATH" SHELL="$SHELL" TERM=dumb LANG="$LANG" \
 
 Інструмент: **Claude Code 2.1.278**, модель **claude-sonnet-5**.
 `env -i` прибирає успадковані `CLAUDE_CODE_*` і `CLAUDE_EFFORT` хоста.
-`--permission-mode bypassPermissions` дано навмисно: агент мусив мати технічну
-змогу писати, інакше його зупинка нічого не доводила б.
+`--permission-mode bypassPermissions` дано навмисно **прогонам команд, A/B і
+хука**: агент мусив мати технічну змогу писати, інакше його зупинка нічого не
+доводила б. Виняток — перевірки Task B (пункти 2 і 3 нижче): вони лише
+запитують, що є в контексті, писати там нічого, тож вони йшли з
+`--permission-mode plan`. Це видно в транскрипті
+`docs/ab/transcripts/b-taskb-no-tools.jsonl` у полі `permissionMode`.
 
 ---
 
@@ -191,6 +195,18 @@ grep -v '^@AGENTS\.md$' CLAUDE.md.bak > CLAUDE.md   # решта файлу бе
   Замін по суті: `fetch` → `postJson`, `process.env` → `readEnv`,
   `JSON.parse` → `parseJson` + guard, `console.log` → `log`,
   `send(lead: any)` → `send(lead: Lead): Promise<Result<void>>`.
+
+  Одна з них змінила не лише канал, а й **вміст** повідомлення, і це варто
+  назвати прямо:
+
+  | | було | стало |
+  |---|---|---|
+  | рядок помилки | `console.log("sheets-append failed: " + res.url + " -> " + data.status)` | `log.error(\`sheets-append failed for lead ${lead.id}: ${parsed.value.status}\`)` |
+
+  З повідомлення зник **URL** (а в ньому був `?token=…`), натомість з'явився
+  `lead.id`; вивід перейшов зі stdout на stderr. Обидві зміни — на користь
+  (`log` ще й проганяє текст через `redact()`), але це зміна payload, а не
+  лише каналу, тож вона має бути в звіті, а не лише в діфі.
 - **Оговорка про прогін.** Робота завершилась повністю, але фінальний звіт агента
   урвався на ліміті сесії CLI («You've hit your session limit»), тому цитати
   підсумку тут немає — числа вище зняті мною окремими прогонами команд, а не

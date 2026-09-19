@@ -87,6 +87,23 @@ describe("saveState", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // F1: saveState і loadState мають домовитись про формат. Lead.createdAt —
+  // зовнішні дані з форми; "2026-09-10T08:00:00Z" (без мілісекунд) — валідний
+  // ISO-8601 UTC, але не канонічний toISOString(). Якщо saveState запише його
+  // як є, наступний loadState його відкине, і синхронізація стане назавжди.
+  it("записане через saveState завжди читається назад через loadState", () => {
+    for (const value of [
+      "2026-09-10T08:00:00.000Z",
+      "2026-09-10T08:00:00Z",
+      "2026-09-10T08:00:00+00:00",
+      "2026-09-10T11:00:00+03:00",
+    ]) {
+      saveState(path, { lastSyncedAt: value });
+      const back = loadState(path);
+      expect(back.ok, `round-trip зламався на ${value}`).toBe(true);
+    }
+  });
+
   it("не лишає тимчасового файлу після запису", () => {
     saveState(path, { lastSyncedAt: "2026-09-10T08:00:00.000Z" });
     expect(readFileSync(path, "utf8")).toContain("2026-09-10T08:00:00.000Z");
