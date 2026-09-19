@@ -11,8 +11,17 @@ export interface SyncState {
 
 const INITIAL_STATE: SyncState = { lastSyncedAt: "1970-01-01T00:00:00.000Z" };
 
+/**
+ * `lastSyncedAt` має бути канонічним ISO-8601 в UTC. Самого `isString` замало:
+ * рядок на кшталт "garbage" пройшов би перевірку, а далі порівняння
+ * `lead.createdAt > state.lastSyncedAt` мовчки дало б хибний набір лідів —
+ * рівно той клас тихої помилки, через який стався інцидент.
+ */
+const isIsoUtc = (value: unknown): value is string =>
+  isString(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
+
 const isSyncState = (value: unknown): value is SyncState =>
-  isRecord(value) && isString(value.lastSyncedAt);
+  isRecord(value) && isIsoUtc(value.lastSyncedAt);
 
 /**
  * Читає файл стану.
@@ -24,7 +33,15 @@ const isSyncState = (value: unknown): value is SyncState =>
  */
 export function loadState(path: string): Result<SyncState> {
   if (!existsSync(path)) return { ok: true, value: { ...INITIAL_STATE } };
-  return parseJson(readFileSync(path, "utf8"), isSyncState, "sync-state");
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (error) {
+    // Файл є, але не читається (права, тека замість файлу, збій диска).
+    // Це теж помилка, а не привід почати з епохи.
+    return { ok: false, error: `sync-state: не вдалося прочитати ${path}: ${String(error)}` };
+  }
+  return parseJson(text, isSyncState, "sync-state");
 }
 
 /**

@@ -41,4 +41,17 @@ describe("sheets-append", () => {
 
     await expect(sheetsAppend.send(lead)).resolves.toEqual({ ok: false, error: "sheets error: quota_exceeded" });
   });
+
+  // До рефакторингу тут був голий fetch — рівно одна спроба на виклик send().
+  // postJson за замовчуванням робить до трьох (retries: 2), тож без явного
+  // retries: 0 рефакторинг тихо змінив би поведінку на 5xx. Тест це фіксує.
+  it("на 5xx робить рівно одну спробу, як голий fetch до рефакторингу", async () => {
+    const fetchMock = vi.fn(async () => new Response("", { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await sheetsAppend.send(lead);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+  });
 });

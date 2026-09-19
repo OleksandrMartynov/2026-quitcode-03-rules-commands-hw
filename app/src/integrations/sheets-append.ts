@@ -21,9 +21,14 @@ const sheetsAppend: Integration = {
     const token = readEnv("SHEETS_TOKEN");
     if (!token.ok) return token;
 
-    const response = await postJson(`${webhookUrl.value}?token=${token.value}`, {
-      values: [[lead.createdAt, lead.name, lead.email, lead.phone ?? "", lead.source]],
-    });
+    // retries: 0 — щоб зберегти поведінку: до рефакторингу тут був голий fetch,
+    // тобто рівно одна спроба. Типові retries: 2 у postJson дали б до трьох
+    // запитів, а це вже зміна поведінки, якої рефакторинг робити не має.
+    const response = await postJson(
+      `${webhookUrl.value}?token=${token.value}`,
+      { values: [[lead.createdAt, lead.name, lead.email, lead.phone ?? "", lead.source]] },
+      { retries: 0 },
+    );
     if (!response.ok) return response;
 
     const parsed = parseJson(response.value, isSheetsAppendResponse, "sheets-append");

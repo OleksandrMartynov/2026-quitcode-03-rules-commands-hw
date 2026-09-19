@@ -272,10 +272,16 @@ probe () { printf '{"cwd":"%s","hook_event_name":"PreToolUse","tool_name":"%s","
 ## Поточний стан репозиторію (LIVE)
 
 ```
-cd app && npm test          →  Test Files 8 passed (8) · Tests 29 passed (29)
+cd app && npm test          →  Test Files 8 passed (8) · Tests 33 passed (33)
 cd app && npm run typecheck →  без помилок
 cd app && npm run check:rules →  TOTAL: 0 violation(s)
 ```
+
+> Число тестів зростало по ходу роботи: 18 у стартовому репо → 23 після
+> `/generate-integration` → 29 після фіксу інциденту → **33** після того, як
+> додали регресії на приховану зміну поведінки в `postJson` і на нечитабельний
+> файл стану. Числа в розділах вище — **HIST**, тобто стан на названому коміті;
+> зводити їх із живим деревом не треба.
 
 Усі сім рядків `by rule` — нулі, зокрема `core-untouched 0`.
 Захищені шляхи не змінювались за всю роботу:

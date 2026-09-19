@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,6 +50,27 @@ describe("loadState", () => {
   it("на валідному JSON неочікуваної форми повертає помилку", () => {
     writeFileSync(path, '{"lastSyncedAt": 1757491200}');
     expect(loadState(path).ok).toBe(false);
+  });
+
+  // Рядок, який проходить isString, але не є датою: без перевірки формату
+  // порівняння lead.createdAt > state.lastSyncedAt мовчки дало б хибний набір.
+  it("на рядку, що не є ISO-датою, повертає помилку", () => {
+    writeFileSync(path, '{"lastSyncedAt": "garbage"}');
+    expect(loadState(path).ok).toBe(false);
+  });
+
+  it("на неканонічній, але розбірній даті повертає помилку", () => {
+    writeFileSync(path, '{"lastSyncedAt": "2026-09-10"}');
+    expect(loadState(path).ok).toBe(false);
+  });
+
+  it("на нечитабельному шляху повертає помилку, а не початковий стан", () => {
+    // Тека замість файлу: existsSync каже «є», readFileSync кидає EISDIR.
+    const asDir = join(dir, "state-as-dir");
+    mkdirSync(asDir);
+    const result = loadState(asDir);
+    expect(result.ok).toBe(false);
+    expect(result).not.toEqual({ ok: true, value: { lastSyncedAt: "1970-01-01T00:00:00.000Z" } });
   });
 });
 
