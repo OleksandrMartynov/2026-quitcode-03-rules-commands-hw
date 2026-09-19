@@ -1,0 +1,72 @@
+diff --git a/app/src/core/types.ts b/app/src/core/types.ts
+index 72303a0..ae4d20f 100644
+--- a/app/src/core/types.ts
++++ b/app/src/core/types.ts
+@@ -11,6 +11,7 @@ export interface Lead {
+   budgetUsd?: number;
+   /** ISO-8601, UTC. */
+   createdAt: string;
++  utmCampaign?: string;
+ }
+ 
+ /** Результат операції, що може не вдатися. Помилки — це значення, а не винятки. */
+diff --git a/app/src/integrations/sheets-append.test.ts b/app/src/integrations/sheets-append.test.ts
+index 12e42ce..a63d4af 100644
+--- a/app/src/integrations/sheets-append.test.ts
++++ b/app/src/integrations/sheets-append.test.ts
+@@ -8,6 +8,7 @@ const lead: Lead = {
+   email: "andrii@studio-nova.example.test",
+   source: "instagram",
+   createdAt: "2026-09-10T09:30:00.000Z",
++  utmCampaign: "autumn_sale",
+ };
+ 
+ beforeEach(() => {
+@@ -32,7 +33,31 @@ describe("sheets-append", () => {
+     const [url, init] = fetchMock.mock.calls[0]!;
+     expect(url).toBe("https://sheets.example.test/append?token=fake-sheets-token-0000");
+     expect(JSON.parse(String(init?.body))).toEqual({
+-      values: [["2026-09-10T09:30:00.000Z", "Андрій Тестовий", "andrii@studio-nova.example.test", "", "instagram"]],
++      values: [
++        [
++          "2026-09-10T09:30:00.000Z",
++          "Андрій Тестовий",
++          "andrii@studio-nova.example.test",
++          "",
++          "instagram",
++          "autumn_sale",
++        ],
++      ],
++    });
++  });
++
++  it("записує порожню колонку кампанії, якщо utmCampaign відсутній", async () => {
++    const leadWithoutCampaign: Lead = { ...lead, utmCampaign: undefined };
++    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{"status":"ok"}', { status: 200 }));
++    vi.stubGlobal("fetch", fetchMock);
++
++    await expect(sheetsAppend.send(leadWithoutCampaign)).resolves.toEqual({ ok: true, value: undefined });
++
++    const [, init] = fetchMock.mock.calls[0]!;
++    expect(JSON.parse(String(init?.body))).toEqual({
++      values: [
++        ["2026-09-10T09:30:00.000Z", "Андрій Тестовий", "andrii@studio-nova.example.test", "", "instagram", ""],
++      ],
+     });
+   });
+ 
+diff --git a/app/src/integrations/sheets-append.ts b/app/src/integrations/sheets-append.ts
+index 32c45b9..a89b174 100644
+--- a/app/src/integrations/sheets-append.ts
++++ b/app/src/integrations/sheets-append.ts
+@@ -22,7 +22,9 @@ const sheetsAppend: Integration = {
+     if (!token.ok) return token;
+ 
+     const response = await postJson(`${webhookUrl.value}?token=${token.value}`, {
+-      values: [[lead.createdAt, lead.name, lead.email, lead.phone ?? "", lead.source]],
++      values: [
++        [lead.createdAt, lead.name, lead.email, lead.phone ?? "", lead.source, lead.utmCampaign ?? ""],
++      ],
+     });
+     if (!response.ok) return response;
+ 
