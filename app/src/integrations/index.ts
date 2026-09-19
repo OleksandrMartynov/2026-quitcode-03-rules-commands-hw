@@ -2,5 +2,6 @@
 import type { Integration } from "../core/types.js";
 import sheetsAppend from "./sheets-append.js";
 import { slackNotify } from "./slack-notify.js";
+import { telegramNotify } from "./telegram-notify.js";
 
-export const integrations: readonly Integration[] = [slackNotify, sheetsAppend];
+export const integrations: readonly Integration[] = [slackNotify, sheetsAppend, telegramNotify];

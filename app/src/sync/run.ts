@@ -14,8 +14,14 @@ export async function runSync(
   integrations: readonly Integration[],
   statePath: string,
 ): Promise<SyncReport> {
-  const state = loadState(statePath);
-  saveState(statePath, state); // створює файл стану при першому запуску
+  const loaded = loadState(statePath);
+  if (!loaded.ok) {
+    // Пошкоджений файл стану — зупиняємось, а не починаємо з епохи: інакше цей
+    // запуск розішле всю базу заново (див. materials/error-log.txt).
+    log.error(`sync: ${loaded.error} — запуск скасовано, файл стану треба відновити`);
+    return { pending: 0, delivered: 0, failed: 0 };
+  }
+  const state = loaded.value;
 
   const pending = leads.filter((lead) => lead.createdAt > state.lastSyncedAt);
   let delivered = 0;
