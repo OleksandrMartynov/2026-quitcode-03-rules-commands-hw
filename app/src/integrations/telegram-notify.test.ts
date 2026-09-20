@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Lead } from "../core/types.js";
+import { log } from "../core/log.js";
 import { formatTelegramMessage, telegramNotify } from "./telegram-notify.js";
 
 const lead: Lead = {
@@ -38,7 +39,7 @@ describe("telegram-notify", () => {
   it("надсилає текст у чат і перевіряє URL та тіло запиту", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fake-test-bot-token");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(log, "info").mockImplementation(() => {});
     const fetchMock = vi.fn(
       async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
@@ -59,7 +60,7 @@ describe("telegram-notify", () => {
   it("не повертає bot-токен у тексті помилки", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "bot1234567890:AAFakeTokenForTestsOnly000000");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(log, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 502 })));
 
     const result = await telegramNotify.send(lead);
@@ -75,7 +76,7 @@ describe("telegram-notify", () => {
   it("на 5xx не повторює запит — дубль сповіщення гірший за втрату", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fake-test-bot-token");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(log, "error").mockImplementation(() => {});
     const fetchMock = vi.fn(async () => new Response("", { status: 502 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -87,8 +88,8 @@ describe("telegram-notify", () => {
   it("повертає помилку, якщо Telegram відповідає ok: false", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fake-test-bot-token");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(log, "info").mockImplementation(() => {});
+    vi.spyOn(log, "error").mockImplementation(() => {});
     const fetchMock = vi.fn(
       async (_url: string, _init?: RequestInit) =>
         new Response(JSON.stringify({ ok: false, description: "chat not found" }), { status: 200 }),
@@ -104,7 +105,7 @@ describe("telegram-notify", () => {
   it("у тілі запиту немає email і телефону ліда", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fake-test-bot-token");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(log, "info").mockImplementation(() => {});
     const fetchMock = vi.fn(
       async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
