@@ -644,7 +644,7 @@ expect(url).toBe("https://sheets.example.test/append?token=fake-sheets-token-000
 ## Поточний стан репозиторію (LIVE)
 
 ```
-cd app && npm test          →  Test Files 8 passed (8) · Tests 49 passed (49)
+cd app && npm test          →  Test Files 8 passed (8) · Tests 50 passed (50)
 cd app && npm run typecheck →  без помилок
 cd app && npm run check:rules →  TOTAL: 0 violation(s)
 ```
@@ -659,7 +659,8 @@ cd app && npm run check:rules →  TOTAL: 0 violation(s)
 > календарну дату) → 45, потім **46** після рев'ю CodeRabbit: спершу мітка
 > без явної зони, далі — повна граматика ISO-8601 замість перевірки самого
 > суфікса зони → **49** після розбору чужих PR: витік токена в поверненому
-> `Result` і повтор неідемпотентного `sendMessage`.
+> `Result`, повтор неідемпотентного `sendMessage` і вимога `https` для
+> вебхука таблиці.
 > Числа в розділах вище — **HIST**, тобто стан на названому коміті; зводити їх
 > із живим деревом не треба.
 

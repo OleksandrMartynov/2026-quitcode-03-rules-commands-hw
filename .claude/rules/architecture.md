@@ -70,8 +70,10 @@ paths:
   (`<name>.ts`, `<name>.test.ts`) і одну зміну в `index.ts`.
 - Напрям імпортів (будь-яка глибина `../`, не лише один рівень):
   ```bash
-  grep -rnE 'from "(\.\./)+sync/' app/src/integrations/   # порожньо
-  grep -rnE 'from "(\.\./)+(integrations|sync)/' app/src/core/   # порожньо
+  grep -rnE "from ['\"](\.\./)+sync/" app/src/integrations/          # порожньо
+  grep -rnE "from ['\"](\.\./)+(integrations|sync)/" app/src/core/   # порожньо
   ```
-  Саме `(\.\./)+`, а не `\.\./`: шаблон на один рівень пропускав би
-  `from "../../integrations/foo.js"`.
+  Дві деталі, без яких перевірка мовчки пропускає порушення:
+  `(\.\./)+`, а не `\.\./` — інакше `from "../../integrations/foo.js"`
+  не знайдеться; і клас лапок `['"]`, а не лише `"` — TypeScript однаково
+  приймає `from '../sync/run.js'`.

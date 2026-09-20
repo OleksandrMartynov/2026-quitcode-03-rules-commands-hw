@@ -84,19 +84,49 @@ const WRAPPERS = new Set([
   "nice", "nohup", "time", "stdbuf", "timeout", "setsid", "ionice",
 ]);
 
+// Прапорці обгорток, які ЗАБИРАЮТЬ значення наступним токеном. Без цього
+// `env -C . rm …` розбирався б так, що командою ставала «.», а `rm` і шлях
+// лишались просто аргументами — і перевірка їх не бачила.
+const WRAPPER_VALUE_FLAGS = {
+  env: new Set(["-C", "--chdir", "-u", "--unset", "-S", "--split-string"]),
+  timeout: new Set(["-s", "--signal", "-k", "--kill-after"]),
+  nice: new Set(["-n", "--adjustment"]),
+  ionice: new Set(["-c", "--class", "-n", "--classdata", "-p", "--pid"]),
+  stdbuf: new Set(["-i", "-o", "-e", "--input", "--output", "--error"]),
+};
+
+/**
+ * Знімає прозорі обгортки (`env`, `sudo`, `/usr/bin/…`) і повертає справжню
+ * команду. Другим значенням — `uncertain`: розбір упевнений чи ні.
+ *
+ * Невідомий прапорець обгортки робить розбір непевним: ми не знаємо, чи він
+ * забирає наступний токен, тож не знаємо, де починається команда. У такому разі
+ * не вгадуємо — викликач мусить перевірити всі токени й заблокувати, якщо
+ * серед них є захищений шлях.
+ */
 function stripWrappers(tokens) {
   let i = 0;
+  let uncertain = false;
   while (i < tokens.length) {
     // VAR=value перед командою — теж префікс.
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) { i++; continue; }
     const name = basename(tokens[i]); // /usr/bin/rm -> rm
     if (!WRAPPERS.has(name)) break;
+    const valueFlags = WRAPPER_VALUE_FLAGS[name] ?? new Set();
     i++;
-    // Прапорці й їхні значення в обгортці пропускаємо (nice -n 5, timeout 5s).
-    while (i < tokens.length && (tokens[i].startsWith("-") || /^\d+[smhd]?$/.test(tokens[i]))) i++;
+    while (i < tokens.length && tokens[i].startsWith("-")) {
+      const flag = tokens[i].split("=")[0];
+      const takesValue = valueFlags.has(flag) && !tokens[i].includes("=");
+      i++;
+      if (takesValue) i++;
+      else if (!valueFlags.has(flag)) uncertain = true; // невідомий прапорець
+    }
+    // timeout 5s cmd — тривалість без прапорця.
+    if (i < tokens.length && /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]) && name === "timeout") i++;
   }
   // Виконуваний файл лишаємо без шляху, щоб /usr/bin/rm збігся з rm.
-  return i < tokens.length ? [basename(tokens[i]), ...tokens.slice(i + 1)] : [];
+  const rest = i < tokens.length ? [basename(tokens[i]), ...tokens.slice(i + 1)] : [];
+  return { tokens: rest, uncertain };
 }
 
 function deny(what, why) {
@@ -229,7 +259,22 @@ try {
     // бо інакше `cp app/src/core/log.ts /tmp/copy.ts` блокувався б даремно —
     // це читання з core, а не запис у нього.
     for (const part of probe.split(/[;|&]+/)) {
-      const tokens = stripWrappers(part.trim().split(/\s+/).filter(Boolean));
+      const raw = part.trim().split(/\s+/).filter(Boolean);
+      const { tokens, uncertain } = stripWrappers(raw);
+
+      // Розбір непевний — не вгадуємо: якщо в команді згадано захищений шлях,
+      // блокуємо.
+      if (uncertain) {
+        for (const token of raw) {
+          const hit = classify(token, cwd);
+          if (hit) {
+            deny(
+              `обгортку з невідомим прапорцем не можна розібрати, а в команді згадано \`${hit.rel}\``,
+              `не знаємо, де закінчується обгортка й починається команда, тож у захищеній зоні \`${hit.zone}\` блокуємо`,
+            );
+          }
+        }
+      }
       if (tokens.length === 0) continue;
 
       // Пише в УСІ свої аргументи.

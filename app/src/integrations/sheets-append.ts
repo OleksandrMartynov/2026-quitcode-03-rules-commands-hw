@@ -24,6 +24,14 @@ const sheetsAppend: Integration = {
     const token = readEnv("SHEETS_TOKEN");
     if (!token.ok) return token;
 
+    // Токен їде в query-параметрі, тож схема тут — це не гігієна, а умова
+    // конфіденційності: по http він пішов би відкритим текстом. `readEnv`
+    // схему не перевіряє, `postJson` бере URL як є — отже перевіряємо тут,
+    // до запиту. Адресу в текст помилки не кладемо: у ній той самий токен.
+    if (!webhookUrl.value.startsWith("https://")) {
+      return { ok: false, error: "sheets-append: SHEETS_WEBHOOK_URL має бути https://" };
+    }
+
     // retries: 0 — щоб зберегти поведінку: до рефакторингу тут був голий fetch,
     // тобто рівно одна спроба. Типові retries: 2 у postJson дали б до трьох
     // запитів, а це вже зміна поведінки, якої рефакторинг робити не має.
