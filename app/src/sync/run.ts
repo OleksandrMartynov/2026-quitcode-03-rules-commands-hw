@@ -36,7 +36,10 @@ export async function runSync(
   // у pending, але ніколи не посував би чекпойнт (його не з чого рахувати),
   // тож розсилався б у кожну інтеграцію щоп'ять хвилин нескінченно — рівно
   // той шторм дублікатів, через який стався інцидент.
-  const broken = leads.find((lead) => Number.isNaN(Date.parse(lead.createdAt)));
+  // Через toCanonicalIso, а не власний Date.parse: перевірка мітки часу має
+  // бути в одному місці, інакше ліди й файл стану розійдуться в тому, що
+  // вважають валідним.
+  const broken = leads.find((lead) => !toCanonicalIso(lead.createdAt).ok);
   if (broken) {
     const error = `sync-state: лід ${broken.id} має нерозбірний createdAt ${broken.createdAt}`;
     log.error(`${error} — запуск скасовано, дані ліда треба виправити`);

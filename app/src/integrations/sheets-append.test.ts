@@ -36,6 +36,25 @@ describe("sheets-append", () => {
     });
   });
 
+  // Конвенція 10 вимагає цей випадок для кожної інтеграції. Рефакторинг завів
+  // сюди readEnv() замість прямого process.env — і саме цей шлях лишався
+  // єдиним у проєкті без тесту.
+  it("повертає помилку, якщо не задано SHEETS_WEBHOOK_URL", async () => {
+    vi.stubEnv("SHEETS_WEBHOOK_URL", "");
+    await expect(sheetsAppend.send(lead)).resolves.toEqual({
+      ok: false,
+      error: "missing environment variable SHEETS_WEBHOOK_URL",
+    });
+  });
+
+  it("повертає помилку, якщо не задано SHEETS_TOKEN", async () => {
+    vi.stubEnv("SHEETS_TOKEN", "");
+    await expect(sheetsAppend.send(lead)).resolves.toEqual({
+      ok: false,
+      error: "missing environment variable SHEETS_TOKEN",
+    });
+  });
+
   it("повертає помилку, якщо таблиця відповіла не ok", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response('{"status":"quota_exceeded"}', { status: 200 })));
 

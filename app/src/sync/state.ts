@@ -11,18 +11,42 @@ export interface SyncState {
 
 const INITIAL_STATE: SyncState = { lastSyncedAt: "1970-01-01T00:00:00.000Z" };
 
+const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/**
+ * `Date.parse` приймає неіснуючі дати й мовчки прокручує їх уперед:
+ * `"2026-02-29"` (2026 — не високосний) розбирається успішно й стає
+ * `"2026-03-01"`. Це тихе перетлумачення зовнішніх даних — рівно те, що
+ * забороняє конвенція 4, — тож календарну частину перевіряємо окремо.
+ */
+function hasRealCalendarDate(value: string): boolean {
+  const m = CALENDAR_DATE.exec(value);
+  if (!m) return true; // не форма Y-M-D — хай вирішує Date.parse
+  const [, y, mo, d] = m;
+  const probe = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  return (
+    probe.getUTCFullYear() === Number(y) &&
+    probe.getUTCMonth() === Number(mo) - 1 &&
+    probe.getUTCDate() === Number(d)
+  );
+}
+
 /**
  * Зводить будь-яку валідну мітку часу до канонічного UTC-вигляду.
  *
- * Це місце, де сходяться запис і читання. `Lead.createdAt` приходить із форми
- * сайту, і `"2026-09-10T08:00:00Z"` чи `"...+03:00"` — так само валідний ISO-8601,
- * як і `"2026-09-10T08:00:00.000Z"`. Якщо записати таке значення як є, наступний
+ * Це місце, де сходяться запис, читання й перевірка лідів — єдині ворота для
+ * міток часу в усьому модулі. `Lead.createdAt` приходить із форми сайту, і
+ * `"2026-09-10T08:00:00Z"` чи `"...+03:00"` — так само валідний ISO-8601, як
+ * і `"2026-09-10T08:00:00.000Z"`. Якщо записати таке значення як є, наступний
  * `loadState` його відкине — і синхронізація стане назавжди, повертаючи звіт,
  * не відрізнити від «нових лідів немає».
  */
 export function toCanonicalIso(value: string): Result<string> {
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) return { ok: false, error: `sync-state: не мітка часу ISO-8601: ${value}` };
+  if (!hasRealCalendarDate(value)) {
+    return { ok: false, error: `sync-state: неіснуюча календарна дата: ${value}` };
+  }
   return { ok: true, value: new Date(ms).toISOString() };
 }
 
