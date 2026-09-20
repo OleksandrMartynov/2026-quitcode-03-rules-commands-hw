@@ -37,11 +37,12 @@ env -i HOME="$HOME" PATH="$PATH" SHELL="$SHELL" TERM=dumb LANG="$LANG" \
   переказу зробив дві незалежні перевірки:
 
 **Перевірка 1 — подія `system/init` (SESSION).** У headless-прогоні поле
-`memory_paths` містить **лише** теку auto-memory (довгий шлях до теки проєкту
-скорочено — це єдина правка цитати):
+`memory_paths` містить **лише** теку auto-memory (домашню теку замінено на
+`<home>`, довгий шлях до теки проєкту скорочено — це єдині правки цитати,
+такі самі, як у транскриптах):
 
 ```json
-{"memory_paths":{"auto":"/Users/alexmart/.claude/projects/<…>/memory/"}}
+{"memory_paths":{"auto":"<home>/.claude/projects/<project>/memory/"}}
 ```
 
 **Висновок чесний і негативний: `init` не перелічує `CLAUDE.md` і `AGENTS.md`**,
