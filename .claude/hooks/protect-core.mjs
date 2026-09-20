@@ -76,6 +76,29 @@ const BASH_BLOCKLIST = [
  */
 const unquote = (cmd) => cmd.replace(/["']/g, "");
 
+// Обгортки, за якими ховається справжня команда: `env rm …`, `sudo rm …`,
+// `/usr/bin/rm …`, `nice -n 5 rm …`. Без нормалізації перевірка першого токена
+// дивиться на обгортку й пропускає запис.
+const WRAPPERS = new Set([
+  "env", "sudo", "doas", "command", "builtin", "exec",
+  "nice", "nohup", "time", "stdbuf", "timeout", "setsid", "ionice",
+]);
+
+function stripWrappers(tokens) {
+  let i = 0;
+  while (i < tokens.length) {
+    // VAR=value перед командою — теж префікс.
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) { i++; continue; }
+    const name = basename(tokens[i]); // /usr/bin/rm -> rm
+    if (!WRAPPERS.has(name)) break;
+    i++;
+    // Прапорці й їхні значення в обгортці пропускаємо (nice -n 5, timeout 5s).
+    while (i < tokens.length && (tokens[i].startsWith("-") || /^\d+[smhd]?$/.test(tokens[i]))) i++;
+  }
+  // Виконуваний файл лишаємо без шляху, щоб /usr/bin/rm збігся з rm.
+  return i < tokens.length ? [basename(tokens[i]), ...tokens.slice(i + 1)] : [];
+}
+
 function deny(what, why) {
   process.stderr.write(
     `protect-core: заблоковано — ${what}\n` +
@@ -188,11 +211,25 @@ try {
       }
     }
 
+    // Те, чого не можна розібрати надійно, блокуємо, щойно в команді згадано
+    // захищений шлях: підстановка, eval і -exec ховають справжню дію.
+    if (/\$\(|`|\beval\b|\b(?:ba)?sh\s+-c\b|-exec\b|-delete\b|\bxargs\b/.test(probe)) {
+      for (const token of probe.split(/[\s;|&()<>]+/)) {
+        const hit = token && classify(token, cwd);
+        if (hit) {
+          deny(
+            `команду не можна розібрати надійно, а в ній згадано \`${hit.rel}\``,
+            `підстановка, eval, -exec чи xargs ховають справжню дію: у захищеній зоні \`${hit.zone}\` такі команди блокуємо, а не вгадуємо`,
+          );
+        }
+      }
+    }
+
     // Команди, які пишуть у файл, названий аргументом. Розрізняємо два види,
     // бо інакше `cp app/src/core/log.ts /tmp/copy.ts` блокувався б даремно —
     // це читання з core, а не запис у нього.
     for (const part of probe.split(/[;|&]+/)) {
-      const tokens = part.trim().split(/\s+/).filter(Boolean);
+      const tokens = stripWrappers(part.trim().split(/\s+/).filter(Boolean));
       if (tokens.length === 0) continue;
 
       // Пише в УСІ свої аргументи.

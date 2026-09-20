@@ -12,7 +12,10 @@ export interface SyncState {
 const INITIAL_STATE: SyncState = { lastSyncedAt: "1970-01-01T00:00:00.000Z" };
 
 const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
-const HAS_TIMEZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+// Повна граматика, а не лише суфікс зони: перевірка самого хвоста пропускала
+// "2026-09-10 08:00:00Z" (пробіл замість T), і `Date.parse` мовчки канонізував
+// його у справжню мітку. Вимагаємо `T`, повний час і явну зону.
+const ISO_8601_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})$/;
 
 /**
  * `Date.parse` приймає неіснуючі дати й мовчки прокручує їх уперед:
@@ -43,12 +46,12 @@ function hasRealCalendarDate(value: string): boolean {
  * не відрізнити від «нових лідів немає».
  */
 export function toCanonicalIso(value: string): Result<string> {
-  // Без явної зони `Date.parse` тлумачить рядок як ЛОКАЛЬНИЙ час, тож
-  // "2026-09-10T08:00:00" на машині в Києві стає "2026-09-10T05:00:00.000Z".
-  // Це тихий зсув зовнішніх даних, і він залежить від машини — вимагаємо
-  // явну зону: `Z` або `±HH:MM`.
-  if (!HAS_TIMEZONE.test(value)) {
-    return { ok: false, error: `sync-state: мітка часу без явної зони: ${value}` };
+  // `Date.parse` приймає куди більше, ніж ISO-8601, і мовчки все канонізує:
+  // без зони бере ЛОКАЛЬНИЙ час (результат залежить від машини), а пробіл
+  // замість `T` чи формат на кшталт "Sep 10 2026" проходить як валідний.
+  // Тому спершу — форма, і лише потім розбір.
+  if (!ISO_8601_UTC.test(value)) {
+    return { ok: false, error: `sync-state: не ISO-8601 з явною зоною: ${value}` };
   }
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) return { ok: false, error: `sync-state: не мітка часу ISO-8601: ${value}` };
