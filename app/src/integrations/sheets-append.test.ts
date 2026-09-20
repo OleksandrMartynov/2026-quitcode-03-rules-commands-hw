@@ -61,6 +61,20 @@ describe("sheets-append", () => {
     await expect(sheetsAppend.send(lead)).resolves.toEqual({ ok: false, error: "sheets error: quota_exceeded" });
   });
 
+  // postJson вставляє повний URL у текст помилки, а в URL тут ?token=…
+  // Повернутий Result ніхто не маскує, тож секрет не має в нього потрапити.
+  it("не повертає токен у тексті помилки", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 502 })));
+
+    const result = await sheetsAppend.send(lead);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).not.toContain("fake-sheets-token-0000");
+    expect(result.error).not.toContain("sheets.example.test");
+    expect(result.error).toContain("HTTP 502");
+  });
+
   // До рефакторингу тут був голий fetch — рівно одна спроба на виклик send().
   // postJson за замовчуванням робить до трьох (retries: 2), тож без явного
   // retries: 0 рефакторинг тихо змінив би поведінку на 5xx. Тест це фіксує.

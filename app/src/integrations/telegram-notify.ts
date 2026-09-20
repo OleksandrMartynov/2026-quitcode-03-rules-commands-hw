@@ -30,13 +30,24 @@ export const telegramNotify: Integration = {
     const chatId = readEnv("TELEGRAM_CHAT_ID");
     if (!chatId.ok) return chatId;
 
-    const response = await postJson(`https://api.telegram.org/bot${botToken.value}/sendMessage`, {
-      chat_id: chatId.value,
-      text: formatTelegramMessage(lead),
-    });
+    // `retries: 0` навмисно. `sendMessage` не ідемпотентний: на 5xx повідомлення
+    // могло вже дійти, і повтор надішле менеджерам дубль. Саме шторм дублікатів
+    // у каналі й був інцидентом 10.09 (`materials/error-log.txt`), тож для
+    // сповіщення втрата одного пінга дешевша за дубль — тим паче що сам лід
+    // усе одно лягає в таблицю як у систему обліку.
+    // Ідеал — повторювати 429 (повідомлення точно не дійшло) і не повторювати
+    // 5xx — через `PostOptions` не виражається, а `core/http.ts` змінювати не можна.
+    const response = await postJson(
+      `https://api.telegram.org/bot${botToken.value}/sendMessage`,
+      { chat_id: chatId.value, text: formatTelegramMessage(lead) },
+      { retries: 0 },
+    );
     if (!response.ok) {
-      log.error(`telegram-notify: lead ${lead.id} not delivered: ${response.error}`);
-      return response;
+      // У URL тут сидить bot-токен, а `postJson` вставляє URL у текст помилки.
+      // `log` його замаскує, повернутий `Result` — ні. Відрізаємо адресу.
+      const reason = response.error.split(" failed: ").pop() ?? response.error;
+      log.error(`telegram-notify: lead ${lead.id} not delivered: ${reason}`);
+      return { ok: false, error: `telegram-notify: ${reason}` };
     }
 
     const parsed = parseJson(response.value, isTelegramResponse, "telegram-notify");

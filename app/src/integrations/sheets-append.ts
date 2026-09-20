@@ -8,6 +8,9 @@ interface SheetsAppendResponse {
   status: string;
 }
 
+/** `POST <url> failed: <причина>` → `<причина>`, щоб не тягти URL із токеном. */
+const reasonOf = (error: string): string => error.split(" failed: ").pop() ?? error;
+
 const isSheetsAppendResponse = (value: unknown): value is SheetsAppendResponse =>
   isRecord(value) && isString(value.status);
 
@@ -29,7 +32,13 @@ const sheetsAppend: Integration = {
       { values: [[lead.createdAt, lead.name, lead.email, lead.phone ?? "", lead.source]] },
       { retries: 0 },
     );
-    if (!response.ok) return response;
+    if (!response.ok) {
+      // `postJson` кладе в текст помилки повний URL, а в URL тут — `?token=…`.
+      // У журналі його маскує `redact()`, але ПОВЕРНУТИЙ `Result` ніхто не
+      // маскує: він піде далі викликачу, і секрет поїде з ним. Лишаємо саму
+      // причину («HTTP 502», текст винятку) і відрізаємо адресу.
+      return { ok: false, error: `sheets-append: ${reasonOf(response.error)}` };
+    }
 
     const parsed = parseJson(response.value, isSheetsAppendResponse, "sheets-append");
     if (!parsed.ok) return parsed;

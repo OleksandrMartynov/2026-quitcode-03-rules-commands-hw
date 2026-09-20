@@ -55,6 +55,35 @@ describe("telegram-notify", () => {
     });
   });
 
+  // У URL Telegram сидить bot-токен, а postJson кладе URL у текст помилки.
+  it("не повертає bot-токен у тексті помилки", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "bot1234567890:AAFakeTokenForTestsOnly000000");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 502 })));
+
+    const result = await telegramNotify.send(lead);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).not.toContain("api.telegram.org");
+    expect(result.error).not.toContain("AAFakeTokenForTestsOnly");
+    expect(result.error).toMatch(/^telegram-notify: /);
+  });
+
+  // sendMessage не ідемпотентний: повтор на 5xx надіслав би менеджерам дубль.
+  it("на 5xx не повторює запит — дубль сповіщення гірший за втрату", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "fake-test-bot-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => new Response("", { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await telegramNotify.send(lead);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("повертає помилку, якщо Telegram відповідає ok: false", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "fake-test-bot-token");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100200300");

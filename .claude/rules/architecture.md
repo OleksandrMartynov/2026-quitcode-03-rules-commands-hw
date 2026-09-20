@@ -68,5 +68,10 @@ paths:
 - Нова інтеграція з'явилась **рівно в трьох місцях**:
   `git status --short app/src/integrations` показує два нові файли
   (`<name>.ts`, `<name>.test.ts`) і одну зміну в `index.ts`.
-- `grep -rn "from \"\.\./sync/" app/src/integrations/` → порожньо.
-- `grep -rn "from \"\.\./\(integrations\|sync\)/" app/src/core/` → порожньо.
+- Напрям імпортів (будь-яка глибина `../`, не лише один рівень):
+  ```bash
+  grep -rnE 'from "(\.\./)+sync/' app/src/integrations/   # порожньо
+  grep -rnE 'from "(\.\./)+(integrations|sync)/' app/src/core/   # порожньо
+  ```
+  Саме `(\.\./)+`, а не `\.\./`: шаблон на один рівень пропускав би
+  `from "../../integrations/foo.js"`.
