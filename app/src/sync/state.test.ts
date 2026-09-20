@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -102,6 +102,18 @@ describe("saveState", () => {
       const back = loadState(path);
       expect(back.ok, `round-trip зламався на ${value}`).toBe(true);
     }
+  });
+
+  // Шлях, заради якого існує атомарний запис: якщо writeFileSync упав
+  // (повний диск, немає теки), маємо отримати Result з помилкою і не лишити
+  // по собі сміття.
+  it("на недоступному шляху повертає помилку і не лишає .tmp", () => {
+    const missingDir = join(dir, "no-such-dir", "sync-state.json");
+
+    const result = saveState(missingDir, { lastSyncedAt: "2026-09-10T08:00:00.000Z" });
+
+    expect(result.ok).toBe(false);
+    expect(readdirSync(dir)).not.toContain("no-such-dir");
   });
 
   it("не лишає тимчасового файлу після запису", () => {

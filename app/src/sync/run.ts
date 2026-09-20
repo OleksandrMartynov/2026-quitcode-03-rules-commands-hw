@@ -29,17 +29,24 @@ export async function runSync(
   }
   const since = Date.parse(loaded.value.lastSyncedAt);
 
+  // Нерозбірний createdAt — це зіпсовані зовнішні дані, а не «новий лід».
+  // Конвенція 4: неочікувана форма — помилка, а не значення за замовчуванням.
+  //
+  // Вважати такий лід новим не можна ще й механічно: він завжди потрапляв би
+  // у pending, але ніколи не посував би чекпойнт (його не з чого рахувати),
+  // тож розсилався б у кожну інтеграцію щоп'ять хвилин нескінченно — рівно
+  // той шторм дублікатів, через який стався інцидент.
+  const broken = leads.find((lead) => Number.isNaN(Date.parse(lead.createdAt)));
+  if (broken) {
+    const error = `sync-state: лід ${broken.id} має нерозбірний createdAt ${broken.createdAt}`;
+    log.error(`${error} — запуск скасовано, дані ліда треба виправити`);
+    return { ok: false, error };
+  }
+
   // Порівнюємо моменти часу, а не рядки: lead.createdAt приходить із форми й
   // може бути в іншому, теж валідному вигляді ("...Z" без мілісекунд, "+03:00"),
   // для якого лексикографічний порядок не збігається з хронологічним.
-  const pending = leads.filter((lead) => {
-    const at = Date.parse(lead.createdAt);
-    if (Number.isNaN(at)) {
-      log.warn(`sync: лід ${lead.id} має нерозбірний createdAt ${lead.createdAt} — вважаємо новим`);
-      return true;
-    }
-    return at > since;
-  });
+  const pending = leads.filter((lead) => Date.parse(lead.createdAt) > since);
 
   let delivered = 0;
   let failed = 0;
@@ -52,10 +59,8 @@ export async function runSync(
     }
   }
 
-  const newestMs = pending.reduce((latest, lead) => {
-    const at = Date.parse(lead.createdAt);
-    return Number.isNaN(at) ? latest : Math.max(latest, at);
-  }, since);
+  // Усі createdAt тут уже розбірні — перевірено вище, до розсилки.
+  const newestMs = pending.reduce((latest, lead) => Math.max(latest, Date.parse(lead.createdAt)), since);
 
   const newest = toCanonicalIso(new Date(newestMs).toISOString());
   if (!newest.ok) return newest;

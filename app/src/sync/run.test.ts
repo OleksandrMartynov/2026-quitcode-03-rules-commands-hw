@@ -91,6 +91,39 @@ describe("runSync", () => {
     expect(idle).toEqual({ ok: true, value: { pending: 0, delivered: 0, failed: 0 } });
   });
 
+  // Нерозбірний createdAt не має перетворюватись на нескінченну повторну
+  // розсилку: раніше такий лід завжди вважався новим, але ніколи не посував
+  // чекпойнт, тож ішов у кожну інтеграцію кожні п'ять хвилин.
+  it("лід із нерозбірним createdAt скасовує прогін, а не розсилається вічно", async () => {
+    const statePath = join(dir, "sync-state.json");
+    const bad = [makeLead("ld_bad", "not-a-date")];
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const sent: string[] = [];
+    const first = await runSync(bad, [recordingIntegration(sent)], statePath);
+
+    expect(first.ok).toBe(false);
+    expect(sent).toEqual([]);
+
+    // І на наступному прогоні теж — не «доставили ще раз».
+    const sentAgain: string[] = [];
+    const second = await runSync(bad, [recordingIntegration(sentAgain)], statePath);
+    expect(second.ok).toBe(false);
+    expect(sentAgain).toEqual([]);
+  });
+
+  it("один зіпсований лід не дає розіслати решту наполовину", async () => {
+    const statePath = join(dir, "sync-state.json");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const mixed = [...leads, makeLead("ld_bad", "not-a-date")];
+
+    const sent: string[] = [];
+    const result = await runSync(mixed, [recordingIntegration(sent)], statePath);
+
+    expect(result.ok).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
   // F1: lead.createdAt приходить із форми й буває неканонічним. Якщо його
   // записати як є, наступний прогін відкине власний файл стану.
   it("неканонічний createdAt не ламає наступний прогін", async () => {
