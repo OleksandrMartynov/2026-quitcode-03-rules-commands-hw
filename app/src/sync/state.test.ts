@@ -107,6 +107,12 @@ describe("saveState", () => {
   // Date.parse приймає неіснуючі дати й мовчки прокручує їх уперед:
   // 2026 не високосний, тож "2026-02-29" стало б "2026-03-01". Тихе
   // перетлумачення зовнішніх даних — те саме, що заборонено конвенцією 4.
+  // Без зони Date.parse бере ЛОКАЛЬНИЙ час — результат залежить від машини.
+  it("відхиляє мітку часу без явної зони", () => {
+    expect(saveState(path, { lastSyncedAt: '2026-09-10T08:00:00' }).ok).toBe(false);
+    expect(saveState(path, { lastSyncedAt: '2026-09-10' }).ok).toBe(false);
+  });
+
   it("відхиляє неіснуючу календарну дату замість тихого зсуву", () => {
     const result = saveState(path, { lastSyncedAt: "2026-02-29T00:00:00.000Z" });
     expect(result.ok).toBe(false);
@@ -133,6 +139,9 @@ describe("saveState", () => {
   it("не лишає тимчасового файлу після запису", () => {
     saveState(path, { lastSyncedAt: "2026-09-10T08:00:00.000Z" });
     expect(readFileSync(path, "utf8")).toContain("2026-09-10T08:00:00.000Z");
-    expect(() => readFileSync(`${path}.tmp`, "utf8")).toThrow();
+    // Ім'я тимчасового файлу містить pid і час (`<path>.<pid>.<ts>.tmp`), тож
+    // перевіряти рівно `<path>.tmp` безглуздо — такого імені не буває ніколи,
+    // і тест проходив би навіть із залишеним сміттям. Дивимось на теку.
+    expect(readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
   });
 });

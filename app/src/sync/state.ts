@@ -12,6 +12,7 @@ export interface SyncState {
 const INITIAL_STATE: SyncState = { lastSyncedAt: "1970-01-01T00:00:00.000Z" };
 
 const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
+const HAS_TIMEZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 /**
  * `Date.parse` приймає неіснуючі дати й мовчки прокручує їх уперед:
@@ -42,6 +43,13 @@ function hasRealCalendarDate(value: string): boolean {
  * не відрізнити від «нових лідів немає».
  */
 export function toCanonicalIso(value: string): Result<string> {
+  // Без явної зони `Date.parse` тлумачить рядок як ЛОКАЛЬНИЙ час, тож
+  // "2026-09-10T08:00:00" на машині в Києві стає "2026-09-10T05:00:00.000Z".
+  // Це тихий зсув зовнішніх даних, і він залежить від машини — вимагаємо
+  // явну зону: `Z` або `±HH:MM`.
+  if (!HAS_TIMEZONE.test(value)) {
+    return { ok: false, error: `sync-state: мітка часу без явної зони: ${value}` };
+  }
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) return { ok: false, error: `sync-state: не мітка часу ISO-8601: ${value}` };
   if (!hasRealCalendarDate(value)) {

@@ -177,6 +177,51 @@ try {
     for (const { re, why } of BASH_BLOCKLIST) {
       if (re.test(cmd) || re.test(probe)) deny(`команда \`${cmd.slice(0, 200)}\``, why);
     }
+
+    // Ціль перенаправлення: `> файл` і `>> файл`. Перевіряємо саме ціль, а не
+    // наявність ">" будь-де, інакше `ls app/scripts > /tmp/x` хибно блокувалось
+    // би — там у захищену зону нічого не пишеться.
+    for (const m of probe.matchAll(/\d?>>?\s*([^\s;|&()<>]+)/g)) {
+      const hit = classify(m[1], cwd);
+      if (hit) {
+        deny(`перенаправлення виводу у \`${hit.rel}\``, `цей шлях лежить у захищеній зоні \`${hit.zone}\``);
+      }
+    }
+
+    // Команди, які пишуть у файл, названий аргументом. Розрізняємо два види,
+    // бо інакше `cp app/src/core/log.ts /tmp/copy.ts` блокувався б даремно —
+    // це читання з core, а не запис у нього.
+    for (const part of probe.split(/[;|&]+/)) {
+      const tokens = part.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) continue;
+
+      // Пише в УСІ свої аргументи.
+      // mv тут, а не серед «лише призначення»: перенесення з core ВИДАЛЯЄ
+      // джерело, тобто змінює захищену зону так само, як запис у неї.
+      const writesAllArgs = /^(?:tee|rm|mv|truncate|dd|chmod|chown|patch)$/.test(tokens[0]) ||
+        (tokens[0] === "sed" && tokens.includes("-i")) ||
+        (tokens[0] === "git" && tokens[1] === "apply");
+      // Пише лише в ОСТАННІЙ аргумент — призначення.
+      const writesLastArg = /^(?:cp|ln|install)$/.test(tokens[0]);
+
+      const targets = writesAllArgs
+        ? tokens.slice(1)
+        : writesLastArg
+          ? tokens.slice(-1)
+          : [];
+
+      for (const token of targets) {
+        if (token.startsWith("-")) continue;
+        const hit = classify(token, cwd);
+        if (hit) {
+          deny(
+            `команда змінює \`${hit.rel}\``,
+            `цей шлях лежить у захищеній зоні \`${hit.zone}\` (команда: ${cmd.slice(0, 120)})`,
+          );
+        }
+      }
+    }
+
     process.exit(0);
   }
 
