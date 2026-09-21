@@ -47,7 +47,7 @@ paths:
 > це спадщина, як і порушення конвенцій у ньому. Міняти стиль експорту там не
 > можна мимохідь: `index.ts` імпортує його як default, тож це правка другого
 > файлу, а `/refactor` дозволяє рівно один. Отже
-> `grep -n "export default" app/src/integrations/` дає один рядок, і це
+> `grep -rn "export default" app/src/integrations/` дає один рядок, і це
 > очікувано; два рядки означають, що правило порушив новий модуль.
 
 ### Публічний API ядра — рівно цей
@@ -84,9 +84,10 @@ paths:
   # 2. integrations/ нічого не знають про sync/
   grep -rnE "['\"](\.\./)+sync/" app/src/integrations/
 
-  # 3. integrations/ не імпортують одне одного; реєстр index.ts — єдиний,
-  #    кому можна, а тест законно імпортує свій модуль
-  grep -rnE "['\"]\./" app/src/integrations/ \
+  # 3. integrations/ не імпортують одне одного — ні сусіда через `./`, ні
+  #    себе ж через `../integrations/`; реєстр index.ts — єдиний, кому можна,
+  #    а тест законно імпортує свій модуль
+  grep -rnE "['\"](\./|(\.\./)+integrations/)" app/src/integrations/ \
     | grep -vE "^app/src/integrations/(index\.ts|[^:]*\.test\.ts):"
 
   # 4. sync/ працює через реєстр, а не з конкретним модулем інтеграції

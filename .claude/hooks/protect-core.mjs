@@ -58,6 +58,19 @@ const READ_ONLY_TOOLS = new Set([
   "WebSearch",
 ]);
 
+// Підкоманди git, які не можуть переписати файл у робочому дереві. Знову
+// allow-list, а не перелік «небезпечних»: `config --file`, `stash`, `archive -o`,
+// `worktree`, `bundle`, `format-patch -o`, `submodule`, `filter-branch` пишуть
+// у файли, і цей перелік ніколи не буде повним. `add` і `commit` тут законно:
+// вони чіпають індекс і історію, а не файли в захищених шляхах — інакше
+// блокувалося б повідомлення коміту, що згадує `.claude/rules/`.
+const READ_ONLY_GIT = new Set([
+  "diff", "status", "log", "show", "blame", "grep", "shortlog", "describe",
+  "ls-files", "ls-tree", "ls-remote", "rev-parse", "rev-list", "cat-file",
+  "name-rev", "whatchanged", "count-objects", "var", "help", "version",
+  "add", "commit", "push", "fetch", "remote", "branch", "tag",
+]);
+
 // Лише те, що розпізнається напевно. Широкий regex по шел-командах дає хибні
 // спрацювання на легітимних читаннях і все одно не ловить усі обхідні шляхи.
 const BASH_BLOCKLIST = [
@@ -401,7 +414,7 @@ try {
         (verb === "sed" && tokens.includes("-i")) ||
         (verb === "node" && tokens.includes("-e")) ||
         (verb === "npm" && tokens.includes("install")) ||
-        (verb === "git" && /^(apply|checkout|restore|clean|rm|mv)$/.test(tokens[1] ?? ""));
+        (verb === "git" && !READ_ONLY_GIT.has((tokens[1] ?? "").replace(/^-+/, "") || "help"));
       const provablyReadOnly = READ_ONLY_BASH.has(verb) && !mutatingForm;
       if (!provablyReadOnly && !writesLastArg) {
         for (const token of tokens.slice(1)) {

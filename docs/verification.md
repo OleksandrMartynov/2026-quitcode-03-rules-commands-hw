@@ -323,8 +323,15 @@ grep -v '^@AGENTS\.md$' CLAUDE.md.bak > CLAUDE.md   # решта файлу бе
    довелось би захищати щоразу, коли хтось питає, чому в правилі «без винятків»
    є виняток. Тому натомість прибрано причину: обидва тести інтеграцій тепер
    розбирають тіло через `parseJson` з guard, як це робить продакшн-код, а
-   конвенція 4 не має карво-ауту взагалі. Перевірка:
-   `grep -c "JSON.parse" app/src/integrations/*.test.ts` → нулі.
+   конвенція 4 не має карво-ауту взагалі. Перевірка — саме по цих двох файлах,
+   бо глоб `*.test.ts` зачепив би ще й `slack-notify.test.ts`, де `JSON.parse`
+   лишається законно (див. наступний абзац), і «нулі» стало б неправдою:
+
+   ```bash
+   grep -c "JSON.parse" app/src/integrations/{sheets-append,telegram-notify}.test.ts
+   # sheets-append.test.ts:0
+   # telegram-notify.test.ts:0
+   ```
 
    `JSON.parse` лишився там, де він не про зовнішні дані:
    `slack-notify.test.ts:47` (файл не входив у скоуп жодної команди —
@@ -505,13 +512,34 @@ protect-core: заблоковано — запис у `app/src/core/log.ts` (Ed
   не може правити `.claude/**` через heredoc. Саме так і має бути — за
   `do-not-touch.md` ці файли змінює людина поза сесією агента.
 
+- **`git` — теж allow-list, уже на рівні підкоманд.** `git` стояв серед
+  доведено read-only вербів, а мутуючими вважались шість підкоманд:
+  `apply|checkout|restore|clean|rm|mv`. Тобто знову deny-list, лише на поверх
+  нижче — і він програв так само:
+
+  ```bash
+  git config --file app/src/core/log.ts user.name attacker   # раніше exit=0
+  git stash push app/src/core/log.ts                          # раніше exit=0
+  git archive -o app/src/core/x.tar HEAD                      # раніше exit=0
+  git worktree add .claude/wt                                 # раніше exit=0
+  ```
+
+  Далі йшли б `bundle`, `format-patch -o`, `submodule`, `filter-branch`.
+  Тому перелік перевернуто: доведено безпечні для файлів підкоманди — це
+  `diff`, `status`, `log`, `show`, `blame`, `grep`, `ls-files`, `rev-parse`,
+  `cat-file` і подібні читання, плюс `add`, `commit`, `push`, `fetch`,
+  `branch`, `tag`. Останні шість тут не помилка: вони чіпають індекс, історію
+  й віддалений репозиторій, а не файли в захищених шляхах. Саме тому
+  `git commit -m "правила в .claude/rules/ оновлено"` лишається дозволеним —
+  інакше хук блокував би власне повідомлення коміту.
+
 - **Чого все одно не гарантує:** хук — не інтерпретатор шелу. Base64, кодування
   в аргументі, запис із процесу, вже запущеного раніше, лишаються поза ним.
   Межа тут не «усе покрито», а «дешеві обходи закриті, а невідоме блокується
   замість пропуску».
 - **Не блокує читання** захищених файлів — заборонено лише запис.
 
-### Таблиця істинності хука — 45 проб
+### Таблиця істинності хука — 53 проби
 
 Запускається з кореня репозиторію, нічого не змінює:
 
@@ -524,6 +552,8 @@ probe () { printf '{"cwd":"%s","hook_event_name":"PreToolUse","tool_name":"%s","
 |---|---|
 | **2** | `Edit app/src/core/log.ts` · абсолютний шлях у core · `integrations/../core/types.ts` · `APP/SRC/CORE/log.ts` · симлінк у core · `app/scripts/core.lock.json` · `materials/ab-task.md` · `.coderabbit.yaml` · `.github/pull_request_template.md` · `NotebookEdit` у core · `MultiEdit`, де в core лише один із двох файлів · `Bash … --write-lock` · нерозбірний stdin · `tool_input` не об'єкт (рядок / `null` / масив) · payload не об'єкт |
 | **2** | `cd app/src/core && echo x > log.ts` · `cd app/src/core && rm log.ts` · `cd app/scripts && sed -i … check-rules.mjs` · `cd .claude && rm settings.json` · `cd app/src && cd core && rm log.ts` · `cd $V && rm log.ts` |
+| **2** | `git config --file app/src/core/log.ts …` · `git stash push app/src/core/log.ts` · `git archive -o app/src/core/x.tar` · `git worktree add .claude/wt` |
+| **0** | `git add -A` · `git diff --stat … -- app/src/core` · `git status --short -- app/src/core` · `git checkout -- app` |
 | **2** | `python3 - <<PY … io.open(".claude/settings.json","w") … PY` · `node -e "…app/src/core/log.ts…"` · `python3 -c "…materials/error-log.txt…"` |
 | **0** | `git commit -m "… .claude/rules/ …"` · `echo див. app/src/core/log.ts` · `python3 - <<PY … docs/verification.md … PY` |
 | **2** | `dd of=app/src/core/log.ts` · `tar --file=app/src/core/x.tar` · `cd app/src/core && dd of=log.ts` · `echo x>app/src/core/log.ts` (без пробілу) |
