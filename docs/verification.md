@@ -480,13 +480,38 @@ protect-core: заблоковано — запис у `app/src/core/log.ts` (Ed
   немає → `exit=0`. Критерій — наявність файлу, а не схожість рядка, тож хибних
   спрацювань на звичайній роботі (`cd app && npm test`) не з'являється.
 
+- **Шлях усередині виразу, а не окремим токеном.** Найнеприємніша з дірок, бо
+  саме нею я сам і користувався весь час, поки писав цю роботу:
+
+  ```bash
+  python3 - <<PY          # раніше exit=0
+  import io
+  io.open(".claude/settings.json", "w").write("…")
+  PY
+  ```
+
+  Хук розбирав команду на токени й кожен пробував як шлях. Тут шляху-токена
+  немає: є `io.open(".claude/settings.json","w")` — після зняття лапок це один
+  токен із дужками й комою, який не резолвиться нікуди. Те саме з
+  `node -e "…"` і `python3 -c "…"`.
+
+  Тепер для сегментів, **не доведених як read-only**, додатково шукається
+  захищений префікс підрядком у сирому тексті сегмента — незалежно від того,
+  чи він схожий на окремий аргумент. Для доведеного читання скану немає, і це
+  не дрібниця: інакше блокувався б `git commit -m "правила в .claude/rules/
+  оновлено"` і `echo див. app/src/core/log.ts`, де нічого не пишеться.
+
+  Наслідок для мене прямий і навмисний: після цієї правки агент у сесії більше
+  не може правити `.claude/**` через heredoc. Саме так і має бути — за
+  `do-not-touch.md` ці файли змінює людина поза сесією агента.
+
 - **Чого все одно не гарантує:** хук — не інтерпретатор шелу. Base64, кодування
   в аргументі, запис із процесу, вже запущеного раніше, лишаються поза ним.
   Межа тут не «усе покрито», а «дешеві обходи закриті, а невідоме блокується
   замість пропуску».
 - **Не блокує читання** захищених файлів — заборонено лише запис.
 
-### Таблиця істинності хука — 39 проб
+### Таблиця істинності хука — 45 проб
 
 Запускається з кореня репозиторію, нічого не змінює:
 
@@ -499,6 +524,8 @@ probe () { printf '{"cwd":"%s","hook_event_name":"PreToolUse","tool_name":"%s","
 |---|---|
 | **2** | `Edit app/src/core/log.ts` · абсолютний шлях у core · `integrations/../core/types.ts` · `APP/SRC/CORE/log.ts` · симлінк у core · `app/scripts/core.lock.json` · `materials/ab-task.md` · `.coderabbit.yaml` · `.github/pull_request_template.md` · `NotebookEdit` у core · `MultiEdit`, де в core лише один із двох файлів · `Bash … --write-lock` · нерозбірний stdin · `tool_input` не об'єкт (рядок / `null` / масив) · payload не об'єкт |
 | **2** | `cd app/src/core && echo x > log.ts` · `cd app/src/core && rm log.ts` · `cd app/scripts && sed -i … check-rules.mjs` · `cd .claude && rm settings.json` · `cd app/src && cd core && rm log.ts` · `cd $V && rm log.ts` |
+| **2** | `python3 - <<PY … io.open(".claude/settings.json","w") … PY` · `node -e "…app/src/core/log.ts…"` · `python3 -c "…materials/error-log.txt…"` |
+| **0** | `git commit -m "… .claude/rules/ …"` · `echo див. app/src/core/log.ts` · `python3 - <<PY … docs/verification.md … PY` |
 | **2** | `dd of=app/src/core/log.ts` · `tar --file=app/src/core/x.tar` · `cd app/src/core && dd of=log.ts` · `echo x>app/src/core/log.ts` (без пробілу) |
 | **0** | `app/src/sync/state.ts` · **`app/src/core-helpers/x.ts`** (пастка на префікс) · `sheets-append.ts` · `docs/verification.md` · `Bash npm test` · `Bash grep -rn fetch app/src/core` · `Read` у core · `Grep` по core · `Edit` без поля шляху · `Edit` зовсім без `tool_input` · порожній stdin |
 | **0** | `cd app && npm test` · `cd app/src/core && cat log.ts` (читання) · `cd $TMPDIR && rm foo.txt` |
