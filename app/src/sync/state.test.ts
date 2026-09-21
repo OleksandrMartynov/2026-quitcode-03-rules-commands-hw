@@ -92,15 +92,24 @@ describe("saveState", () => {
   // ISO-8601 UTC, але не канонічний toISOString(). Якщо saveState запише його
   // як є, наступний loadState його відкине, і синхронізація стане назавжди.
   it("записане через saveState завжди читається назад через loadState", () => {
-    for (const value of [
-      "2026-09-10T08:00:00.000Z",
-      "2026-09-10T08:00:00Z",
-      "2026-09-10T08:00:00+00:00",
-      "2026-09-10T11:00:00+03:00",
-    ]) {
-      saveState(path, { lastSyncedAt: value });
-      const back = loadState(path);
-      expect(back.ok, `round-trip зламався на ${value}`).toBe(true);
+    // Перевіряємо не лише ok: після першої ітерації у файлі вже є валідний
+    // стан, тож saveState, який нічого не записав, теж дав би ok. Тому кожне
+    // значення звіряємо з очікуваною канонічною формою.
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["2026-09-10T08:00:00.000Z", "2026-09-10T08:00:00.000Z"],
+      ["2026-09-10T08:00:00Z", "2026-09-10T08:00:00.000Z"],
+      ["2026-09-10T08:00:00+00:00", "2026-09-10T08:00:00.000Z"],
+      ["2026-09-10T11:00:00+03:00", "2026-09-10T08:00:00.000Z"],
+      ["2026-09-11T06:30:00-02:00", "2026-09-11T08:30:00.000Z"],
+    ];
+    for (const [input, canonical] of cases) {
+      expect(saveState(path, { lastSyncedAt: input }).ok, `запис зламався на ${input}`).toBe(true);
+      expect(loadState(path), `round-trip зламався на ${input}`).toEqual({
+        ok: true,
+        value: { lastSyncedAt: canonical },
+      });
+      // І на диску теж саме канонічне значення, а не те, що прийшло.
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ lastSyncedAt: canonical });
     }
   });
 

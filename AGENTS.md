@@ -44,13 +44,12 @@ app/src/
    [`.claude/rules/architecture.md`](.claude/rules/architecture.md)
 4. Збої повертаються як `Result<T>`, а не кидаються винятком →
    [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
-5. Мережа, середовище, розбір JSON і журнал — тільки через відповідні функції
-   ядра → [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
-6. Пошкоджені зовнішні дані стають помилкою, а не мовчазним значенням за
-   замовчуванням → [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
-7. Email і телефон ліда в сповіщення не потрапляють →
+5. Мережа, середовище, JSON і журнал — лише через функції ядра, а пошкоджені
+   зовнішні дані стають помилкою, а не мовчазним значенням за замовчуванням →
    [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
-8. Нових залежностей не додаємо — нуль runtime-залежностей, і жодного пакета
+6. Email і телефон ліда в сповіщення не потрапляють →
+   [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
+7. Нових залежностей не додаємо — нуль runtime-залежностей, і жодного пакета
    в `dependencies` чи `devDependencies` →
    [`.claude/rules/conventions.md`](.claude/rules/conventions.md)
 

@@ -129,6 +129,22 @@ function stripWrappers(tokens) {
   return { tokens: rest, uncertain };
 }
 
+// Команди, які ГАРАНТОВАНО лише читають. Усе, чого тут немає, вважається
+// таким, що може писати: перелічувати інструменти запису по одному — програшна
+// гра (touch, mkdir, python3 -c, perl -i, node -e, будь-що наступне). Тому
+// посилка інвертована: згадав захищений шлях — доведи, що лише читаєш.
+const READ_ONLY_BASH = new Set([
+  "cat", "bat", "head", "tail", "less", "more", "nl", "od", "xxd", "strings",
+  "grep", "egrep", "fgrep", "rg", "ag", "ack",
+  "ls", "dir", "tree", "find", "stat", "file", "du", "wc", "basename", "dirname",
+  "diff", "cmp", "md5", "md5sum", "shasum", "sha256sum", "cksum",
+  "sort", "uniq", "cut", "tr", "column", "jq", "yq", "awk", "sed", "echo", "printf",
+  "cd", "pwd", "true", "false", "test", "which", "type", "git",
+  // node/npm/npx/python свідомо ВІДСУТНІ: вони виконують довільний код, тож
+  // `node script.js app/src/core/x` читанням не є. На команди без захищеного
+  // шляху (`cd app && npm test`) це не впливає — там нема чого захищати.
+]);
+
 function deny(what, why) {
   process.stderr.write(
     `protect-core: заблоковано — ${what}\n` +
@@ -242,14 +258,19 @@ try {
     }
 
     // Те, чого не можна розібрати надійно, блокуємо, щойно в команді згадано
-    // захищений шлях: підстановка, eval і -exec ховають справжню дію.
-    if (/\$\(|`|\beval\b|\b(?:ba)?sh\s+-c\b|-exec\b|-delete\b|\bxargs\b/.test(probe)) {
+    // захищений шлях: змінна, підстановка, eval і -exec ховають справжню дію.
+    // `$` тут будь-яке — `echo x > $D/log.ts` резолвиться лише в шелі, не тут.
+    if (/\$|`|\beval\b|\b(?:ba)?sh\s+-c\b|-exec\b|-delete\b|\bxargs\b/.test(probe)) {
       for (const token of probe.split(/[\s;|&()<>]+/)) {
-        const hit = token && classify(token, cwd);
+        // `D=app/src/core` — шлях сховано в присвоєнні; знімаємо `NAME=`,
+        // інакше токен не впізнається як захищений.
+        const bare = token.replace(/^[A-Za-z_][A-Za-z0-9_]*=/, "");
+        const hit = bare && classify(bare, cwd);
         if (hit) {
           deny(
             `команду не можна розібрати надійно, а в ній згадано \`${hit.rel}\``,
-            `підстановка, eval, -exec чи xargs ховають справжню дію: у захищеній зоні \`${hit.zone}\` такі команди блокуємо, а не вгадуємо`,
+            `змінні, підстановка, eval, -exec чи xargs ховають справжню дію: ` +
+              `у захищеній зоні \`${hit.zone}\` такі команди блокуємо, а не вгадуємо`,
           );
         }
       }
@@ -300,6 +321,30 @@ try {
             `команда змінює \`${hit.rel}\``,
             `цей шлях лежить у захищеній зоні \`${hit.zone}\` (команда: ${cmd.slice(0, 120)})`,
           );
+        }
+      }
+
+      // Backstop. Якщо в команді згадано захищений шлях, а верб не доведено
+      // read-only — блокуємо. `sed -i`, `node -e`, `npm install` пишуть, тому
+      // для них дозволу немає навіть попри те, що базовий верб у списку.
+      const verb = tokens[0];
+      const mutatingForm =
+        (verb === "sed" && tokens.includes("-i")) ||
+        (verb === "node" && tokens.includes("-e")) ||
+        (verb === "npm" && tokens.includes("install")) ||
+        (verb === "git" && /^(apply|checkout|restore|clean|rm|mv)$/.test(tokens[1] ?? ""));
+      const provablyReadOnly = READ_ONLY_BASH.has(verb) && !mutatingForm;
+      if (!provablyReadOnly && !writesLastArg) {
+        for (const token of tokens.slice(1)) {
+          if (token.startsWith("-")) continue;
+          const hit = classify(token, cwd);
+          if (hit) {
+            deny(
+              `команду \`${verb}\` не доведено як read-only, а вона згадує \`${hit.rel}\``,
+              `у захищеній зоні \`${hit.zone}\` дозволені лише команди з доведеним читанням; ` +
+                `перелічувати інструменти запису по одному не можна — завжди знайдеться наступний`,
+            );
+          }
         }
       }
     }

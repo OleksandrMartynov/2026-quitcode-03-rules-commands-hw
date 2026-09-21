@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Lead } from "../core/types.js";
+import { log } from "../core/log.js";
 import sheetsAppend from "./sheets-append.js";
 
 const lead: Lead = {
@@ -13,7 +14,8 @@ const lead: Lead = {
 beforeEach(() => {
   vi.stubEnv("SHEETS_WEBHOOK_URL", "https://sheets.example.test/append");
   vi.stubEnv("SHEETS_TOKEN", "fake-sheets-token-0000");
-  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(log, "info").mockImplementation(() => {});
+  vi.spyOn(log, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
