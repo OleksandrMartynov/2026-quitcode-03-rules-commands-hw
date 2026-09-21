@@ -221,6 +221,29 @@ function classifyAnywhere(rawPath) {
   return null;
 }
 
+/**
+ * Шлях в аргументі не завжди є самим аргументом: `dd of=app/src/core/log.ts`,
+ * `tar --file=app/src/core/x`, `D=app/src/core` ховають його праворуч від `=`.
+ * Тому з токена робимо всі форми, які можуть виявитись шляхом, і перевіряємо
+ * кожну. Голий прапорець (`-i`, `--recursive`) шляхом бути не може.
+ */
+function pathForms(token) {
+  const forms = [];
+  if (!token.startsWith("-")) forms.push(token);
+  const eq = token.indexOf("=");
+  if (eq > 0 && eq < token.length - 1) forms.push(token.slice(eq + 1));
+  return forms;
+}
+
+/** Перша форма токена, що потрапляє в захищену зону, або null. */
+function hitFor(token, bases, cwdUnknown) {
+  for (const form of pathForms(token)) {
+    const hit = classifyIn(form, bases) || (cwdUnknown ? classifyAnywhere(form) : null);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function classifyAgainst(rawPath, base) {
   const target = realish(resolve(base, rawPath));
   const root = realish(REPO_ROOT);
@@ -324,7 +347,7 @@ try {
       // наявність ">" будь-де, інакше `ls app/scripts > /tmp/x` хибно блокувалось
       // би — там у захищену зону нічого не пишеться.
       for (const m of part.matchAll(/\d?>>?\s*([^\s;|&()<>]+)/g)) {
-        const hit = classifyIn(m[1], bases) || (cwdUnknown && classifyAnywhere(m[1]));
+        const hit = hitFor(m[1], bases, cwdUnknown);
         if (hit) {
           deny(`перенаправлення виводу у \`${hit.rel}\``, `цей шлях лежить у захищеній зоні \`${hit.zone}\``);
         }
@@ -334,7 +357,7 @@ try {
       // блокуємо.
       if (uncertain) {
         for (const token of raw) {
-          const hit = classifyIn(token, bases) || (cwdUnknown && classifyAnywhere(token));
+          const hit = hitFor(token, bases, cwdUnknown);
           if (hit) {
             deny(
               `обгортку з невідомим прапорцем не можна розібрати, а в команді згадано \`${hit.rel}\``,
@@ -361,8 +384,7 @@ try {
           : [];
 
       for (const token of targets) {
-        if (token.startsWith("-")) continue;
-        const hit = classifyIn(token, bases) || (cwdUnknown && classifyAnywhere(token));
+        const hit = hitFor(token, bases, cwdUnknown);
         if (hit) {
           deny(
             `команда змінює \`${hit.rel}\``,
@@ -383,8 +405,7 @@ try {
       const provablyReadOnly = READ_ONLY_BASH.has(verb) && !mutatingForm;
       if (!provablyReadOnly && !writesLastArg) {
         for (const token of tokens.slice(1)) {
-          if (token.startsWith("-")) continue;
-          const hit = classifyIn(token, bases) || (cwdUnknown && classifyAnywhere(token));
+          const hit = hitFor(token, bases, cwdUnknown);
           if (hit) {
             deny(
               `команду \`${verb}\` не доведено як read-only, а вона згадує \`${hit.rel}\``,
