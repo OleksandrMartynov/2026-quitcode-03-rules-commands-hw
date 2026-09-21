@@ -437,13 +437,37 @@ protect-core: заблоковано — запис у `app/src/core/log.ts` (Ed
   підстановка, `eval`, `sh -c`, `find -exec`, `xargs`. Шлях, зібраний у шелі,
   хук не резолвить — тож не вгадує, а відмовляє.
 
+- **`cd` всередині команди враховується.** Довше за інші дірки трималась саме
+  ця: хук дивився на шляхи, але не на те, звідки вони рахуються. `echo x >
+  app/src/core/log.ts` блокувався, а той самий запис у два кроки —
+
+  ```bash
+  cd app/src/core && echo x > log.ts     # раніше exit=0
+  cd app/src/core && rm log.ts           # раніше exit=0
+  cd app/scripts && sed -i s/a/b/ check-rules.mjs   # раніше exit=0
+  ```
+
+  — проходив, бо `log.ts` від кореня репозиторію справді не захищений.
+  Перелічувати такі форми по одній безглуздо; лікується причина: бази, від яких
+  резолвляться відносні шляхи, тепер несуться через сегменти команди, і `cd`
+  їх зсуває. Обидві бази — і корінь репозиторію, і `cwd` із payload — зсуваються
+  разом, тож захист від підробленого `cwd` не скасовується: `cd app/src/core &&
+  rm log.ts` із `"cwd":"/tmp"` теж дає `exit=2`.
+
+  `cd $VAR`, `cd -` і голий `cd` статично не резолвляться. Тут хук не вгадує й
+  не блокує все підряд, а питає конкретно: чи існує файл із таким відносним
+  іменем усередині захищеної зони? `cd $V && rm log.ts` → `app/src/core/log.ts`
+  існує → `exit=2`; `cd $TMPDIR && rm foo.txt` → такого файлу в захищених зонах
+  немає → `exit=0`. Критерій — наявність файлу, а не схожість рядка, тож хибних
+  спрацювань на звичайній роботі (`cd app && npm test`) не з'являється.
+
 - **Чого все одно не гарантує:** хук — не інтерпретатор шелу. Base64, кодування
   в аргументі, запис із процесу, вже запущеного раніше, лишаються поза ним.
   Межа тут не «усе покрито», а «дешеві обходи закриті, а невідоме блокується
   замість пропуску».
 - **Не блокує читання** захищених файлів — заборонено лише запис.
 
-### Таблиця істинності хука — 22 проби
+### Таблиця істинності хука — 30 проб
 
 Запускається з кореня репозиторію, нічого не змінює:
 
@@ -455,7 +479,9 @@ probe () { printf '{"cwd":"%s","hook_event_name":"PreToolUse","tool_name":"%s","
 | очікується | випадок |
 |---|---|
 | **2** | `Edit app/src/core/log.ts` · абсолютний шлях у core · `integrations/../core/types.ts` · `APP/SRC/CORE/log.ts` · симлінк у core · `app/scripts/core.lock.json` · `materials/ab-task.md` · `.coderabbit.yaml` · `.github/pull_request_template.md` · `NotebookEdit` у core · `MultiEdit`, де в core лише один із двох файлів · `Bash … --write-lock` · нерозбірний stdin · `tool_input` не об'єкт (рядок / `null` / масив) · payload не об'єкт |
+| **2** | `cd app/src/core && echo x > log.ts` · `cd app/src/core && rm log.ts` · `cd app/scripts && sed -i … check-rules.mjs` · `cd .claude && rm settings.json` · `cd app/src && cd core && rm log.ts` · `cd $V && rm log.ts` |
 | **0** | `app/src/sync/state.ts` · **`app/src/core-helpers/x.ts`** (пастка на префікс) · `sheets-append.ts` · `docs/verification.md` · `Bash npm test` · `Bash grep -rn fetch app/src/core` · `Read` у core · `Grep` по core · `Edit` без поля шляху · `Edit` зовсім без `tool_input` · порожній stdin |
+| **0** | `cd app && npm test` · `cd app/src/core && cat log.ts` (читання) · `cd $TMPDIR && rm foo.txt` |
 
 Результат останнього прогону: **усі проби збігаються з очікуваним**.
 

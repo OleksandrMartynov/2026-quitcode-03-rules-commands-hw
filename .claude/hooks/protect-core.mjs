@@ -13,7 +13,7 @@
 //
 // Node, а не bash — щоб працювало і на Windows.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -186,11 +186,39 @@ function realish(p) {
  * Тому відносний шлях пробуємо від ОБОХ баз: заявленої і справжньої.
  */
 function classify(rawPath, cwd) {
-  if (!isAbsolute(rawPath)) {
-    const fromRepo = classifyAgainst(rawPath, REPO_ROOT);
-    if (fromRepo) return fromRepo;
+  return classifyIn(rawPath, [REPO_ROOT, cwd]);
+}
+
+/**
+ * Те саме, але з довільним списком баз. Потрібно для `cd`: усередині однієї
+ * Bash-команди `cd app/src/core && rm log.ts` робоча тека зсувається, і далі
+ * `log.ts` означає вже `app/src/core/log.ts`. Обидві бази зсуваються разом,
+ * щоб зсув не скасовував захист від підробленого `cwd`.
+ */
+function classifyIn(rawPath, bases) {
+  for (const base of bases) {
+    if (isAbsolute(rawPath) && base !== bases[0]) break; // абсолютний шлях від бази не залежить
+    const hit = classifyAgainst(rawPath, base);
+    if (hit) return hit;
   }
-  return classifyAgainst(rawPath, cwd);
+  return null;
+}
+
+/**
+ * Куди саме зсунув `cd $VAR`, статично не знати. Замість того щоб вгадувати чи
+ * блокувати все, питаємо конкретно: чи існує файл із таким відносним іменем
+ * усередині якоїсь захищеної зони? `rm log.ts` після невідомого `cd` —
+ * `app/src/core/log.ts` існує, отже блокуємо; `rm foo.txt` — ні, отже пропускаємо.
+ */
+function classifyAnywhere(rawPath) {
+  if (isAbsolute(rawPath)) return null;
+  for (const dir of PROTECTED_DIRS) {
+    const candidate = resolve(REPO_ROOT, dir, rawPath);
+    if (existsSync(candidate)) {
+      return { rel: relative(realish(REPO_ROOT), realish(candidate)), zone: dir };
+    }
+  }
+  return null;
 }
 
 function classifyAgainst(rawPath, base) {
@@ -261,16 +289,6 @@ try {
       if (re.test(cmd) || re.test(probe)) deny(`команда \`${cmd.slice(0, 200)}\``, why);
     }
 
-    // Ціль перенаправлення: `> файл` і `>> файл`. Перевіряємо саме ціль, а не
-    // наявність ">" будь-де, інакше `ls app/scripts > /tmp/x` хибно блокувалось
-    // би — там у захищену зону нічого не пишеться.
-    for (const m of probe.matchAll(/\d?>>?\s*([^\s;|&()<>]+)/g)) {
-      const hit = classify(m[1], cwd);
-      if (hit) {
-        deny(`перенаправлення виводу у \`${hit.rel}\``, `цей шлях лежить у захищеній зоні \`${hit.zone}\``);
-      }
-    }
-
     // Те, чого не можна розібрати надійно, блокуємо, щойно в команді згадано
     // захищений шлях: змінна, підстановка, eval і -exec ховають справжню дію.
     // `$` тут будь-яке — `echo x > $D/log.ts` резолвиться лише в шелі, не тут.
@@ -293,15 +311,30 @@ try {
     // Команди, які пишуть у файл, названий аргументом. Розрізняємо два види,
     // бо інакше `cp app/src/core/log.ts /tmp/copy.ts` блокувався б даремно —
     // це читання з core, а не запис у нього.
+    // `cd` всередині команди зсуває робочу теку для наступних сегментів, тож
+    // бази несемо через цикл, а не беремо з payload на кожному кроці.
+    let bases = [REPO_ROOT, cwd];
+    let cwdUnknown = false;
+
     for (const part of probe.split(/[;|&]+/)) {
       const raw = part.trim().split(/\s+/).filter(Boolean);
       const { tokens, uncertain } = stripWrappers(raw);
+
+      // Ціль перенаправлення: `> файл` і `>> файл`. Перевіряємо саме ціль, а не
+      // наявність ">" будь-де, інакше `ls app/scripts > /tmp/x` хибно блокувалось
+      // би — там у захищену зону нічого не пишеться.
+      for (const m of part.matchAll(/\d?>>?\s*([^\s;|&()<>]+)/g)) {
+        const hit = classifyIn(m[1], bases) || (cwdUnknown && classifyAnywhere(m[1]));
+        if (hit) {
+          deny(`перенаправлення виводу у \`${hit.rel}\``, `цей шлях лежить у захищеній зоні \`${hit.zone}\``);
+        }
+      }
 
       // Розбір непевний — не вгадуємо: якщо в команді згадано захищений шлях,
       // блокуємо.
       if (uncertain) {
         for (const token of raw) {
-          const hit = classify(token, cwd);
+          const hit = classifyIn(token, bases) || (cwdUnknown && classifyAnywhere(token));
           if (hit) {
             deny(
               `обгортку з невідомим прапорцем не можна розібрати, а в команді згадано \`${hit.rel}\``,
@@ -329,7 +362,7 @@ try {
 
       for (const token of targets) {
         if (token.startsWith("-")) continue;
-        const hit = classify(token, cwd);
+        const hit = classifyIn(token, bases) || (cwdUnknown && classifyAnywhere(token));
         if (hit) {
           deny(
             `команда змінює \`${hit.rel}\``,
@@ -351,7 +384,7 @@ try {
       if (!provablyReadOnly && !writesLastArg) {
         for (const token of tokens.slice(1)) {
           if (token.startsWith("-")) continue;
-          const hit = classify(token, cwd);
+          const hit = classifyIn(token, bases) || (cwdUnknown && classifyAnywhere(token));
           if (hit) {
             deny(
               `команду \`${verb}\` не доведено як read-only, а вона згадує \`${hit.rel}\``,
@@ -359,6 +392,19 @@ try {
                 `перелічувати інструменти запису по одному не можна — завжди знайдеться наступний`,
             );
           }
+        }
+      }
+
+      // Сегмент був `cd` — далі відносні шляхи рахуються від нової теки.
+      // Без цього `cd app/src/core && rm log.ts` проходив: `log.ts` від кореня
+      // репозиторію не захищений, а що воно означає після `cd`, хук не бачив.
+      if (verb === "cd") {
+        const target = tokens.slice(1).find((t) => !t.startsWith("-"));
+        if (!target || target === "-" || /[$`~*?]/.test(target)) {
+          cwdUnknown = true; // `cd`, `cd -`, `cd $VAR` — статично не резолвиться
+        } else {
+          bases = bases.map((b) => resolve(b, target));
+          cwdUnknown = false;
         }
       }
     }
