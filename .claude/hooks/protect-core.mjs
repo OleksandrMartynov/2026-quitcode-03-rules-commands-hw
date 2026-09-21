@@ -179,8 +179,22 @@ function realish(p) {
   }
 }
 
+/**
+ * `cwd` приходить із того самого payload, що й шлях, тож довіряти йому як межі
+ * не можна: `{"cwd":"/tmp","file_path":"app/src/core/log.ts"}` зарезолвився б
+ * у `/tmp/app/src/core/log.ts`, тобто «поза репозиторієм» — і запис пройшов би.
+ * Тому відносний шлях пробуємо від ОБОХ баз: заявленої і справжньої.
+ */
 function classify(rawPath, cwd) {
-  const target = realish(resolve(cwd, rawPath));
+  if (!isAbsolute(rawPath)) {
+    const fromRepo = classifyAgainst(rawPath, REPO_ROOT);
+    if (fromRepo) return fromRepo;
+  }
+  return classifyAgainst(rawPath, cwd);
+}
+
+function classifyAgainst(rawPath, base) {
+  const target = realish(resolve(base, rawPath));
   const root = realish(REPO_ROOT);
   const rel = relative(root, target);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return null; // поза репозиторієм

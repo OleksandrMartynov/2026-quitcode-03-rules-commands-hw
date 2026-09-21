@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Lead } from "../core/types.js";
 import { log } from "../core/log.js";
+import { isRecord, parseJson } from "../core/parse.js";
 import { formatTelegramMessage, telegramNotify } from "./telegram-notify.js";
 
 const lead: Lead = {
@@ -50,9 +51,9 @@ describe("telegram-notify", () => {
     expect(result.ok).toBe(true);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://api.telegram.org/botfake-test-bot-token/sendMessage");
-    expect(JSON.parse(String(init?.body))).toEqual({
-      chat_id: "-100200300",
-      text: formatTelegramMessage(lead),
+    expect(parseJson(String(init?.body), isRecord, "body")).toEqual({
+      ok: true,
+      value: { chat_id: "-100200300", text: formatTelegramMessage(lead) },
     });
   });
 

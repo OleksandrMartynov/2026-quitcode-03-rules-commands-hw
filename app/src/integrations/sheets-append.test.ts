@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Lead } from "../core/types.js";
 import { log } from "../core/log.js";
+import { isRecord, parseJson } from "../core/parse.js";
 import sheetsAppend from "./sheets-append.js";
 
 const lead: Lead = {
@@ -33,8 +34,11 @@ describe("sheets-append", () => {
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://sheets.example.test/append?token=fake-sheets-token-0000");
-    expect(JSON.parse(String(init?.body))).toEqual({
-      values: [["2026-09-10T09:30:00.000Z", "Андрій Тестовий", "andrii@studio-nova.example.test", "", "instagram"]],
+    expect(parseJson(String(init?.body), isRecord, "body")).toEqual({
+      ok: true,
+      value: {
+        values: [["2026-09-10T09:30:00.000Z", "Андрій Тестовий", "andrii@studio-nova.example.test", "", "instagram"]],
+      },
     });
   });
 
