@@ -424,7 +424,7 @@ protect-core: заблоковано — запис у `app/src/core/log.ts` (Ed
 Формулюю межу точно, щоб не обіцяти більше, ніж перевірено:
 
 - **Гарантує:** блокування запису в `app/src/core/**`, `app/scripts/**`,
-  `materials/**`, `.github/**`, **`.claude/**`**, `.coderabbit.yaml`,
+  `materials/**`, `.github/**`, **`.claude/**`**, **`.git/**`**, `.coderabbit.yaml`,
   **`app/package.json`** і **`app/tsconfig.json`** через інструменти
   `Write`, `Edit`, `NotebookEdit`, `MultiEdit` — включно з абсолютними шляхами,
   `..`-переходами, симлінками й іншим регістром літер.
@@ -533,13 +533,45 @@ protect-core: заблоковано — запис у `app/src/core/log.ts` (Ed
   `git commit -m "правила в .claude/rules/ оновлено"` лишається дозволеним —
   інакше хук блокував би власне повідомлення коміту.
 
+- **`.git/` — теж захищена зона, і це не про акуратність.** Найдовший із
+  знайдених ланцюгів вів не через запис у `core/`, а повз нього:
+
+  ```bash
+  echo '#!/bin/sh
+  echo "//" >> app/src/core/log.ts' > .git/hooks/pre-commit   # раніше exit=0
+  chmod +x .git/hooks/pre-commit
+  git commit -m "…"        # git запускає хук ДОЧІРНІМ процесом
+  ```
+
+  Для дочірнього процесу `PreToolUse` не спрацьовує взагалі: хук бачить виклик
+  `git commit`, у якому немає жодного захищеного шляху, і чесно пропускає його.
+  Ядро при цьому змінюється.
+
+  Закрито на вході, а не на виході: `.git/` тепер у переліку захищених тек, тож
+  сам `pre-commit` записати не можна. Разом із ним заблоковано `core.hooksPath`
+  — інакше хуки просто переносяться в `/tmp/h`, і захист `.git/hooks/` нічого
+  не важить.
+
+  **Чому не заблокував `git commit` і `git push`, як пропонувало рев'ю.** Це
+  закрило б ланцюг на виході — і заразом усю роботу: кожен коміт, включно з
+  тим, що несе саме це виправлення. Вартовий, який блокує звичайну роботу,
+  буде вимкнений, і тоді не працюватиме нічого. Правильне місце — установка
+  хука, а не його запуск: `.git/hooks/` потрібна git-у, а не інструментам, тож
+  заборона писати туди не коштує нічого.
+
+  **Що лишається за межею.** `~/.gitconfig` лежить поза репозиторієм, тож пряма
+  правка цього файлу хукові не видна (сам `git config --global core.hooksPath`
+  — видний і заблокований). Так само поза межею будь-що, що виконує код без
+  виклику інструмента: процес, запущений раніше, або аліас у шелі. Це та сама
+  межа, що названа вище, — просто тепер видно, наскільки довгим буває ланцюг.
+
 - **Чого все одно не гарантує:** хук — не інтерпретатор шелу. Base64, кодування
   в аргументі, запис із процесу, вже запущеного раніше, лишаються поза ним.
   Межа тут не «усе покрито», а «дешеві обходи закриті, а невідоме блокується
   замість пропуску».
 - **Не блокує читання** захищених файлів — заборонено лише запис.
 
-### Таблиця істинності хука — 53 проби
+### Таблиця істинності хука — 59 проб
 
 Запускається з кореня репозиторію, нічого не змінює:
 
@@ -552,6 +584,8 @@ probe () { printf '{"cwd":"%s","hook_event_name":"PreToolUse","tool_name":"%s","
 |---|---|
 | **2** | `Edit app/src/core/log.ts` · абсолютний шлях у core · `integrations/../core/types.ts` · `APP/SRC/CORE/log.ts` · симлінк у core · `app/scripts/core.lock.json` · `materials/ab-task.md` · `.coderabbit.yaml` · `.github/pull_request_template.md` · `NotebookEdit` у core · `MultiEdit`, де в core лише один із двох файлів · `Bash … --write-lock` · нерозбірний stdin · `tool_input` не об'єкт (рядок / `null` / масив) · payload не об'єкт |
 | **2** | `cd app/src/core && echo x > log.ts` · `cd app/src/core && rm log.ts` · `cd app/scripts && sed -i … check-rules.mjs` · `cd .claude && rm settings.json` · `cd app/src && cd core && rm log.ts` · `cd $V && rm log.ts` |
+| **2** | `Edit .git/hooks/pre-commit` · `echo x > .git/hooks/pre-commit` · `git config core.hooksPath /tmp/h` · `rm -rf .git` |
+| **0** | `git commit -m "… .claude/rules/ …"` · `git push origin …` |
 | **2** | `git config --file app/src/core/log.ts …` · `git stash push app/src/core/log.ts` · `git archive -o app/src/core/x.tar` · `git worktree add .claude/wt` |
 | **0** | `git add -A` · `git diff --stat … -- app/src/core` · `git status --short -- app/src/core` · `git checkout -- app` |
 | **2** | `python3 - <<PY … io.open(".claude/settings.json","w") … PY` · `node -e "…app/src/core/log.ts…"` · `python3 -c "…materials/error-log.txt…"` |

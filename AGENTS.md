@@ -29,7 +29,8 @@ app/src/
 
 `core/` під окремим рев'ю платформної команди. Разом із ним не редагуються
 `app/scripts/`, `materials/`, `.coderabbit.yaml`, `.github/`, `.claude/` (правила
-й хук) і `app/package.json` / `app/tsconfig.json` (чим запускається перевірка).
+й хук), `app/package.json` / `app/tsconfig.json` (чим запускається перевірка)
+і `.git/` (звідти `pre-commit` запускає код повз усі перевірки).
 
 ## Головні домовленості
 

@@ -84,11 +84,19 @@ paths:
   # 2. integrations/ нічого не знають про sync/
   grep -rnE "['\"](\.\./)+sync/" app/src/integrations/
 
-  # 3. integrations/ не імпортують одне одного — ні сусіда через `./`, ні
-  #    себе ж через `../integrations/`; реєстр index.ts — єдиний, кому можна,
-  #    а тест законно імпортує свій модуль
+  # 3a. Не-тестові модулі не імпортують сусідів узагалі — ні через `./`,
+  #     ні через `../integrations/`. Реєстр index.ts — єдиний виняток.
   grep -rnE "['\"](\./|(\.\./)+integrations/)" app/src/integrations/ \
     | grep -vE "^app/src/integrations/(index\.ts|[^:]*\.test\.ts):"
+
+  # 3b. Тест імпортує РІВНО свій модуль. Виключати весь `*.test.ts`, як було
+  #     раніше, не можна: тоді slack-notify.test.ts міг би імпортувати
+  #     ./telegram-notify.js, і перевірка мовчала б.
+  for t in app/src/integrations/*.test.ts; do
+    self=$(basename "$t" .test.ts)
+    grep -oE "['\"]\./[a-z0-9-]+\.js" "$t" | sed -E "s|['\"]\./||; s|\.js$||" \
+      | grep -v "^$self$" && echo "  ^ чужа інтеграція в $t"
+  done
 
   # 4. sync/ працює через реєстр, а не з конкретним модулем інтеграції
   grep -rnE "['\"](\.\./)+integrations/" app/src/sync/ | grep -v "integrations/index\.js"
